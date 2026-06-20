@@ -23,7 +23,7 @@ import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { floatingShadow, theme } from "../../constants/theme";
 import { compressImageFile } from "../../services/imageCompression";
-import { isSupabaseConfigured, supabase } from "../../services/supabase";
+import { isSupabaseConfigured, supabase, supabaseStorageKey } from "../../services/supabase";
 
 type AuthMode = "login" | "register";
 type UserProfile = {
@@ -78,6 +78,8 @@ const PROFILE_PHOTO_MAX_EDGE = 720;
 const PROFILE_PHOTO_QUALITY = 0.78;
 const SUPABASE_NETWORK_ERROR =
   "No se pudo conectar con Supabase. En local puede ser un bloqueo TLS/certificados de Windows; en Vercel revisa las variables publicas y redepliega.";
+const SUPABASE_HEADER_TOO_LARGE_ERROR =
+  "La sesion es demasiado grande porque Auth tiene una foto guardada en metadata. Cierra sesion y ejecuta la limpieza de avatar_url en auth.users.";
 
 export function ProfileScreen() {
   const { width: viewportWidth } = useWindowDimensions();
@@ -542,22 +544,20 @@ export function ProfileScreen() {
     setSubmitting(true);
 
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut({ scope: "local" });
 
       if (error) {
-        setError(getSupabaseUiError(error, "No se pudo cerrar sesión."));
-        setSubmitting(false);
-        return;
+        clearLocalAuthStorage();
       }
     } catch (error) {
-      setError(getSupabaseUiError(error, "No se pudo cerrar sesión."));
-      setSubmitting(false);
-      return;
+      clearLocalAuthStorage();
     }
 
+    setSession(null);
+    setProfile(null);
     setSubmitting(false);
     setProfileMenuOpen(false);
-    setMessage("Sesión cerrada.");
+    setMessage("Sesión cerrada en este dispositivo.");
   }, [resetFeedback]);
 
   return (
@@ -1659,11 +1659,27 @@ function getSupabaseUiError(error: unknown, fallback: string) {
     error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error ?? "");
   const normalizedMessage = message.toLowerCase();
 
+  if (
+    normalizedMessage.includes("request header or cookie too large") ||
+    normalizedMessage.includes("unexpected token '<'")
+  ) {
+    return SUPABASE_HEADER_TOO_LARGE_ERROR;
+  }
+
   if (normalizedMessage.includes("failed to fetch") || normalizedMessage.includes("networkerror")) {
     return SUPABASE_NETWORK_ERROR;
   }
 
   return fallback;
+}
+
+function clearLocalAuthStorage() {
+  if (typeof window === "undefined" || !supabaseStorageKey) {
+    return;
+  }
+
+  window.localStorage.removeItem(supabaseStorageKey);
+  window.localStorage.removeItem(`${supabaseStorageKey}-code-verifier`);
 }
 
 function getMetadataAvatarUrl(session: Session) {

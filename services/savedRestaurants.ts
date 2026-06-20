@@ -398,6 +398,15 @@ function normalizeSupabaseError(error: unknown) {
   const message = error instanceof Error ? error.message : String((error as { message?: unknown }).message ?? error);
   const normalizedMessage = message.toLowerCase();
 
+  if (
+    normalizedMessage.includes("request header or cookie too large") ||
+    normalizedMessage.includes("unexpected token '<'")
+  ) {
+    return new Error(
+      "La sesion es demasiado grande porque Auth tiene una foto guardada en metadata. Cierra sesion y ejecuta la limpieza de avatar_url en auth.users.",
+    );
+  }
+
   if (normalizedMessage.includes("failed to fetch") || normalizedMessage.includes("networkerror")) {
     return new Error(
       "No se pudo conectar con Supabase. Si ocurre en local en Windows, revisa la comprobacion de certificados/revocacion TLS; si ocurre en Vercel, redepliega con las variables EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",

@@ -43,6 +43,8 @@ const RESTAURANT_PHOTO_MAX_EDGE = 1400;
 const RESTAURANT_PHOTO_QUALITY = 0.78;
 const SUPABASE_NETWORK_ERROR =
   "No se pudo conectar con Supabase. En local puede ser un bloqueo TLS/certificados de Windows; en Vercel revisa las variables publicas y redepliega.";
+const SUPABASE_HEADER_TOO_LARGE_ERROR =
+  "La sesion es demasiado grande porque Auth tiene una foto guardada en metadata. Cierra sesion y ejecuta la limpieza de avatar_url en auth.users.";
 const STEP_MENU_ITEMS: Array<{ label: string; value: VisitedStep }> = [
   { label: "Comida", value: "food" },
   { label: "Local", value: "local" },
@@ -643,6 +645,13 @@ function getSupabaseUiError(error: unknown, fallback: string) {
   const message =
     error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error ?? "");
   const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("request header or cookie too large") ||
+    normalizedMessage.includes("unexpected token '<'")
+  ) {
+    return SUPABASE_HEADER_TOO_LARGE_ERROR;
+  }
 
   if (normalizedMessage.includes("failed to fetch") || normalizedMessage.includes("networkerror")) {
     return SUPABASE_NETWORK_ERROR;
