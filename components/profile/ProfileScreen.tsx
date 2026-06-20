@@ -21,6 +21,14 @@ import { floatingShadow, theme } from "../../constants/theme";
 import { isSupabaseConfigured, supabase } from "../../services/supabase";
 
 type AuthMode = "login" | "register";
+type UserProfile = {
+  avatar_url: string | null;
+  created_at: string;
+  display_name: string | null;
+  id: string;
+  updated_at: string;
+  username: string;
+};
 
 const UserIcon = UserRound as SavoryIconGlyph;
 const MailIcon = Mail as SavoryIconGlyph;
@@ -45,6 +53,8 @@ const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
 export function ProfileScreen() {
   const { width: viewportWidth } = useWindowDimensions();
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
@@ -61,7 +71,7 @@ export function ProfileScreen() {
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const contentWidth = Math.min(overlayWidth, 520);
   const navWidth = Math.min(overlayWidth, 430);
-  const profileName = getDisplayName(session);
+  const profileName = getDisplayName(session, profile);
 
   useEffect(() => {
     if (!supabase) {
@@ -88,6 +98,72 @@ export function ProfileScreen() {
       data.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!supabase || !session) {
+      setProfile(null);
+      setLoadingProfile(false);
+      return;
+    }
+
+    let active = true;
+    const client = supabase;
+    const currentSession = session;
+
+    async function loadProfile() {
+      setLoadingProfile(true);
+
+      const { data, error: profileError } = await client
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, created_at, updated_at")
+        .eq("id", currentSession.user.id)
+        .maybeSingle();
+
+      if (!active) {
+        return;
+      }
+
+      if (profileError) {
+        setLoadingProfile(false);
+        setError("No se pudo cargar tu perfil público.");
+        return;
+      }
+
+      if (data) {
+        setProfile(data);
+        setLoadingProfile(false);
+        return;
+      }
+
+      const { data: createdProfile, error: createProfileError } = await client
+        .from("profiles")
+        .insert({
+          id: currentSession.user.id,
+          username: getFallbackUsername(currentSession),
+        })
+        .select("id, username, display_name, avatar_url, created_at, updated_at")
+        .single();
+
+      if (!active) {
+        return;
+      }
+
+      setLoadingProfile(false);
+
+      if (createProfileError) {
+        setError("Tu sesión existe, pero todavía no se pudo crear el perfil público.");
+        return;
+      }
+
+      setProfile(createdProfile);
+    }
+
+    loadProfile();
+
+    return () => {
+      active = false;
+    };
+  }, [session]);
 
   const resetFeedback = useCallback(() => {
     setError(null);
@@ -285,6 +361,20 @@ export function ProfileScreen() {
                     <Text style={styles.emailText}>{session.user.email}</Text>
                   </View>
                 </View>
+
+                {loadingProfile ? (
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator color={theme.colors.coral} />
+                    <Text style={styles.helperText}>Cargando perfil público</Text>
+                  </View>
+                ) : null}
+
+                {!loadingProfile && !profile ? (
+                  <StatusBlock
+                    icon={ShieldIcon}
+                    text="Tu usuario existe en Auth, pero falta crear la fila en public.profiles. Ejecuta la migración de perfiles en Supabase."
+                  />
+                ) : null}
 
                 {!session.user.email_confirmed_at ? (
                   <StatusBlock
@@ -540,7 +630,15 @@ function StatusBlock({ icon, text }: StatusBlockProps) {
   );
 }
 
-function getDisplayName(session: Session | null) {
+function getDisplayName(session: Session | null, profile: UserProfile | null) {
+  if (profile?.display_name?.trim()) {
+    return profile.display_name.trim();
+  }
+
+  if (profile?.username?.trim()) {
+    return profile.username.trim();
+  }
+
   const username = session?.user.user_metadata?.username;
 
   if (typeof username === "string" && username.trim()) {
@@ -550,8 +648,27 @@ function getDisplayName(session: Session | null) {
   return session?.user.email?.split("@")[0] ?? "Usuario";
 }
 
+function getFallbackUsername(session: Session) {
+  const metadataUsername = session.user.user_metadata?.username;
+
+  if (typeof metadataUsername === "string") {
+    const normalizedUsername = normalizeUsername(metadataUsername);
+
+    if (normalizedUsername) {
+      return normalizedUsername;
+    }
+  }
+
+  return `usuario_${session.user.id.replace(/-/g, "").slice(0, 8)}`;
+}
+
 function normalizeUsername(value: string) {
-  const trimmed = value.trim().replace(/\s+/g, "_").slice(0, 32);
+  const trimmed = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32);
 
   if (trimmed.length < 3) {
     return "";
