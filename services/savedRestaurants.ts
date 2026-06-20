@@ -3,15 +3,20 @@ import type { SavoryPlace } from "../types/place";
 import type {
   RestaurantCommunitySummary,
   RestaurantPhoto,
+  RestaurantVisitSnapshot,
   SavedRestaurantRecord,
   SavedRestaurantStatus,
   SavedRestaurantVisibility,
 } from "../types/restaurant";
 
+type VisitHistoryMode = "append" | "replace_latest";
+
 type SaveRestaurantInput = {
   place: SavoryPlace;
   status: SavedRestaurantStatus;
   userId: string;
+  historyMode?: VisitHistoryMode;
+  savedAt?: string;
   visibility?: SavedRestaurantVisibility;
   cuisineTypes?: string[];
   dishPhotos?: RestaurantPhoto[];
@@ -25,12 +30,13 @@ type SaveRestaurantInput = {
 
 export async function saveRestaurant(input: SaveRestaurantInput) {
   if (!supabase) {
-    return { error: new Error("Supabase no está configurado.") };
+    return { alreadyExists: false, data: null, error: new Error("Supabase no esta configurado.") };
   }
 
+  const googlePlaceId = input.place.placeId || input.place.id;
   const payload = {
     user_id: input.userId,
-    google_place_id: input.place.placeId || input.place.id,
+    google_place_id: googlePlaceId,
     name: input.place.name,
     address: input.place.address ?? null,
     phone: input.place.phone ?? null,
@@ -48,25 +54,93 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
     price_range: input.priceRange ?? null,
     service_comment: input.serviceComment ?? null,
     general_comment: input.generalComment ?? null,
-    saved_at: new Date().toISOString(),
+    saved_at: input.savedAt ?? new Date().toISOString(),
   };
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("saved_restaurants")
+    .select("*")
+    .eq("user_id", input.userId)
+    .eq("google_place_id", googlePlaceId)
+    .eq("status", input.status)
+    .maybeSingle();
+
+  if (lookupError) {
+    return { alreadyExists: false, data: null, error: lookupError };
+  }
+
+  if (input.status === "want_to_go") {
+    if (existing) {
+      return { alreadyExists: true, data: normalizeSavedRestaurant(existing), error: null };
+    }
+
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .insert({ ...payload, visit_history: [] })
+      .select("*")
+      .single();
+
+    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error };
+  }
+
+  const nextVisit = buildVisitSnapshot(payload);
+
+  if (existing) {
+    const existingRecord = normalizeSavedRestaurant(existing);
+    const currentHistory =
+      existingRecord.visit_history.length > 0 ? existingRecord.visit_history : [buildVisitSnapshot(existingRecord)];
+    const nextHistory =
+      input.historyMode === "replace_latest"
+        ? replaceLatestVisit(currentHistory, nextVisit)
+        : [...currentHistory, nextVisit];
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .update({ ...payload, visit_history: nextHistory })
+      .eq("id", existingRecord.id)
+      .select("*")
+      .single();
+
+    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error };
+  }
+
+  const { data, error } = await supabase
+    .from("saved_restaurants")
+    .insert({ ...payload, visit_history: [nextVisit] })
+    .select("*")
+    .single();
+
+  return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error };
+}
+
+export async function deleteSavedRestaurant(recordId: string) {
+  if (!supabase) {
+    return { error: new Error("Supabase no esta configurado.") };
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError || !sessionData.session) {
+    return { error: sessionError ?? new Error("Inicia sesion para modificar tus listas.") };
+  }
 
   const { error } = await supabase
     .from("saved_restaurants")
-    .upsert(payload, { onConflict: "user_id,google_place_id,status" });
+    .delete()
+    .eq("id", recordId)
+    .eq("user_id", sessionData.session.user.id);
 
   return { error };
 }
 
 export async function getCurrentUserSavedRestaurants(status: SavedRestaurantStatus) {
   if (!supabase) {
-    return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no está configurado.") };
+    return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no esta configurado.") };
   }
 
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
   if (sessionError || !sessionData.session) {
-    return { data: [] as SavedRestaurantRecord[], error: sessionError ?? new Error("Inicia sesión para ver tu lista.") };
+    return { data: [] as SavedRestaurantRecord[], error: sessionError ?? new Error("Inicia sesion para ver tu lista.") };
   }
 
   const { data, error } = await supabase
@@ -83,15 +157,35 @@ export async function getCurrentUserSavedRestaurants(status: SavedRestaurantStat
   return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
 }
 
+export async function getPublicUserVisitedRestaurants(userId: string) {
+  if (!supabase) {
+    return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no esta configurado.") };
+  }
+
+  const { data, error } = await supabase
+    .from("saved_restaurants")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "visited")
+    .eq("visibility", "public")
+    .order("saved_at", { ascending: false });
+
+  if (error) {
+    return { data: [] as SavedRestaurantRecord[], error };
+  }
+
+  return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
+}
+
 export async function getCurrentUserSavedRestaurantPins() {
   if (!supabase) {
-    return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no está configurado.") };
+    return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no esta configurado.") };
   }
 
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
   if (sessionError || !sessionData.session) {
-    return { data: [] as SavedRestaurantRecord[], error: sessionError ?? new Error("Inicia sesión para ver tus pines.") };
+    return { data: [] as SavedRestaurantRecord[], error: sessionError ?? new Error("Inicia sesion para ver tus pines.") };
   }
 
   const { data, error } = await supabase
@@ -187,7 +281,49 @@ function normalizeSavedRestaurant(value: unknown): SavedRestaurantRecord {
     general_comment: nullableString(record.general_comment),
     saved_at: String(record.saved_at ?? ""),
     updated_at: String(record.updated_at ?? ""),
+    visit_history: visitHistoryArray(record.visit_history),
   };
+}
+
+function buildVisitSnapshot(record: {
+  cuisine_types: unknown;
+  dish_photos: unknown;
+  food_rating: number;
+  general_comment: unknown;
+  local_photos: unknown;
+  occasion_types: unknown;
+  price_range: unknown;
+  saved_at: string;
+  service_comment: unknown;
+  visibility: SavedRestaurantVisibility;
+}): RestaurantVisitSnapshot {
+  return {
+    cuisine_types: stringArray(record.cuisine_types),
+    dish_photos: photoArray(record.dish_photos),
+    food_rating: clampRating(Number(record.food_rating ?? 0)),
+    general_comment: nullableString(record.general_comment),
+    local_photos: photoArray(record.local_photos),
+    occasion_types: stringArray(record.occasion_types),
+    price_range: nullableString(record.price_range),
+    saved_at: record.saved_at,
+    service_comment: nullableString(record.service_comment),
+    visibility: record.visibility === "public" ? "public" : "private",
+  };
+}
+
+function replaceLatestVisit(history: RestaurantVisitSnapshot[], nextVisit: RestaurantVisitSnapshot) {
+  if (history.length === 0) {
+    return [nextVisit];
+  }
+
+  const latestIndex = history.reduce((latest, visit, index) => {
+    const latestTime = new Date(history[latest]?.saved_at ?? "").getTime();
+    const visitTime = new Date(visit.saved_at).getTime();
+
+    return visitTime >= latestTime ? index : latest;
+  }, 0);
+
+  return history.map((visit, index) => (index === latestIndex ? nextVisit : visit));
 }
 
 function buildCommunitySummary(rows: unknown[]): RestaurantCommunitySummary {
@@ -267,6 +403,32 @@ function photoArray(value: unknown) {
       };
     })
     .slice(0, 8);
+}
+
+function visitHistoryArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      const visit = item as Partial<RestaurantVisitSnapshot>;
+
+      return {
+        cuisine_types: stringArray(visit.cuisine_types),
+        dish_photos: photoArray(visit.dish_photos),
+        food_rating: clampRating(Number(visit.food_rating ?? 0)),
+        general_comment: nullableString(visit.general_comment),
+        local_photos: photoArray(visit.local_photos),
+        occasion_types: stringArray(visit.occasion_types),
+        price_range: nullableString(visit.price_range),
+        saved_at: String(visit.saved_at ?? ""),
+        service_comment: nullableString(visit.service_comment),
+        visibility: visit.visibility === "public" ? "public" : "private",
+      };
+    })
+    .filter((visit) => Boolean(visit.saved_at))
+    .slice(0, 30);
 }
 
 function nullableString(value: unknown) {

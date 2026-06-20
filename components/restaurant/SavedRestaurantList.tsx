@@ -1,23 +1,32 @@
-import { X } from "lucide-react-native";
+import { ChevronRight, Edit3, Trash2, X } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { floatingShadow, theme } from "../../constants/theme";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
-import { getCommunitySummaries, getCurrentUserSavedRestaurants } from "../../services/savedRestaurants";
+import {
+  deleteSavedRestaurant,
+  getCommunitySummaries,
+  getCurrentUserSavedRestaurants,
+  getPublicUserVisitedRestaurants,
+} from "../../services/savedRestaurants";
+import type { SavoryPlace } from "../../types/place";
 import type {
   RestaurantCommunitySummary,
   RestaurantFilters,
   RestaurantPhoto,
+  RestaurantVisitSnapshot,
   SavedRestaurantRecord,
   SavedRestaurantStatus,
 } from "../../types/restaurant";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
+import { RestaurantSaveSheet } from "./RestaurantSaveSheet";
 
 type SavedRestaurantListProps = {
   contentWidth: number;
   filters?: RestaurantFilters;
+  publicUserId?: string;
   status: SavedRestaurantStatus;
 };
 
@@ -27,11 +36,17 @@ type SelectedRestaurant = {
 };
 
 const CloseIcon = X as SavoryIconGlyph;
+const EditIcon = Edit3 as SavoryIconGlyph;
+const NextIcon = ChevronRight as SavoryIconGlyph;
+const TrashIcon = Trash2 as SavoryIconGlyph;
 
-export function SavedRestaurantList({ contentWidth, filters, status }: SavedRestaurantListProps) {
+export function SavedRestaurantList({ contentWidth, filters, publicUserId, status }: SavedRestaurantListProps) {
   const [records, setRecords] = useState<SavedRestaurantRecord[]>([]);
   const [summaries, setSummaries] = useState<Map<string, RestaurantCommunitySummary>>(new Map());
   const [selectedRestaurant, setSelectedRestaurant] = useState<SelectedRestaurant | null>(null);
+  const [editingRestaurant, setEditingRestaurant] = useState<SavedRestaurantRecord | null>(null);
+  const [markingVisitedRestaurant, setMarkingVisitedRestaurant] = useState<SavedRestaurantRecord | null>(null);
+  const [deletingRestaurantId, setDeletingRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isWishlist = status === "want_to_go";
@@ -47,7 +62,9 @@ export function SavedRestaurantList({ contentWidth, filters, status }: SavedRest
     setLoading(true);
     setError(null);
 
-    const { data, error: loadError } = await getCurrentUserSavedRestaurants(status);
+    const { data, error: loadError } = publicUserId
+      ? await getPublicUserVisitedRestaurants(publicUserId)
+      : await getCurrentUserSavedRestaurants(status);
 
     if (loadError) {
       setRecords([]);
@@ -63,11 +80,33 @@ export function SavedRestaurantList({ contentWidth, filters, status }: SavedRest
     }
 
     setLoading(false);
-  }, [status]);
+  }, [publicUserId, status]);
 
   useEffect(() => {
     void loadRestaurants();
   }, [loadRestaurants]);
+
+  const handleDeleteRestaurant = useCallback(
+    async (record: SavedRestaurantRecord) => {
+      if (!confirmRestaurantDeletion(record, isWishlist)) {
+        return;
+      }
+
+      setDeletingRestaurantId(record.id);
+      setError(null);
+      const { error: deleteError } = await deleteSavedRestaurant(record.id);
+      setDeletingRestaurantId(null);
+
+      if (deleteError) {
+        setError(deleteError.message);
+        return;
+      }
+
+      setSelectedRestaurant((selected) => (selected?.record.id === record.id ? null : selected));
+      await loadRestaurants();
+    },
+    [isWishlist, loadRestaurants],
+  );
 
   if (loading) {
     return (
@@ -107,10 +146,15 @@ export function SavedRestaurantList({ contentWidth, filters, status }: SavedRest
 
         return (
           <RestaurantFoldedCard
+            deleting={deletingRestaurantId === record.id}
             key={record.id}
+            onDelete={!publicUserId ? () => void handleDeleteRestaurant(record) : undefined}
+            onEdit={!isWishlist && !publicUserId ? () => setEditingRestaurant(record) : undefined}
+            onMarkVisited={isWishlist && !publicUserId ? () => setMarkingVisitedRestaurant(record) : undefined}
             onPress={() => setSelectedRestaurant({ record, summary })}
             record={record}
             summary={summary}
+            showVisibility={!isWishlist && !publicUserId}
             useCommunitySummary={isWishlist}
           />
         );
@@ -124,10 +168,69 @@ export function SavedRestaurantList({ contentWidth, filters, status }: SavedRest
       >
         {selectedRestaurant ? (
           <RestaurantDetailOverlay
+            deleting={deletingRestaurantId === selectedRestaurant.record.id}
             onClose={() => setSelectedRestaurant(null)}
+            onDelete={!publicUserId ? () => void handleDeleteRestaurant(selectedRestaurant.record) : undefined}
+            onEdit={
+              !isWishlist && !publicUserId
+                ? () => {
+                    setEditingRestaurant(selectedRestaurant.record);
+                    setSelectedRestaurant(null);
+                  }
+                : undefined
+            }
+            onMarkVisited={
+              isWishlist && !publicUserId
+                ? () => {
+                    setMarkingVisitedRestaurant(selectedRestaurant.record);
+                    setSelectedRestaurant(null);
+                  }
+                : undefined
+            }
             record={selectedRestaurant.record}
             summary={selectedRestaurant.summary}
             useCommunitySummary={isWishlist}
+            width={contentWidth}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setEditingRestaurant(null)}
+        transparent
+        visible={Boolean(editingRestaurant)}
+      >
+        {editingRestaurant ? (
+          <RestaurantSaveSheet
+            historyMode="replace_latest"
+            initialRecord={editingRestaurant}
+            initialStatus="visited"
+            lockStatus
+            onClose={() => setEditingRestaurant(null)}
+            onSaved={loadRestaurants}
+            place={recordToPlace(editingRestaurant)}
+            width={contentWidth}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setMarkingVisitedRestaurant(null)}
+        transparent
+        visible={Boolean(markingVisitedRestaurant)}
+      >
+        {markingVisitedRestaurant ? (
+          <RestaurantSaveSheet
+            initialStatus="visited"
+            lockStatus
+            onClose={() => setMarkingVisitedRestaurant(null)}
+            onSaved={async () => {
+              await deleteSavedRestaurant(markingVisitedRestaurant.id);
+              await loadRestaurants();
+            }}
+            place={recordToPlace(markingVisitedRestaurant)}
             width={contentWidth}
           />
         ) : null}
@@ -137,13 +240,28 @@ export function SavedRestaurantList({ contentWidth, filters, status }: SavedRest
 }
 
 type RestaurantFoldedCardProps = {
+  deleting: boolean;
   record: SavedRestaurantRecord;
+  showVisibility: boolean;
   summary?: RestaurantCommunitySummary;
   useCommunitySummary: boolean;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onMarkVisited?: () => void;
   onPress: () => void;
 };
 
-function RestaurantFoldedCard({ onPress, record, summary, useCommunitySummary }: RestaurantFoldedCardProps) {
+function RestaurantFoldedCard({
+  deleting,
+  onDelete,
+  onEdit,
+  onMarkVisited,
+  onPress,
+  record,
+  showVisibility,
+  summary,
+  useCommunitySummary,
+}: RestaurantFoldedCardProps) {
   const rating = useCommunitySummary ? summary?.medianRating ?? null : record.food_rating;
   const priceRange = useCommunitySummary ? summary?.priceRangeMode ?? null : record.price_range;
   const cuisineTypes = useCommunitySummary ? summary?.cuisineTypes ?? [] : record.cuisine_types;
@@ -177,7 +295,8 @@ function RestaurantFoldedCard({ onPress, record, summary, useCommunitySummary }:
         </Pressable>
       ) : null}
       <View style={styles.metaGrid}>
-        <MetaPill label={formatSavedDate(record.saved_at)} />
+        <MetaPill label={formatRestaurantDateSummary(record)} />
+        {showVisibility ? <MetaPill label={record.visibility === "public" ? "Público" : "Privado"} /> : null}
         {hasInfo ? <MetaPill label={`Nota ${formatRating(rating)}`} /> : null}
         {hasInfo && priceRange ? <MetaPill label={priceRange} /> : null}
       </View>
@@ -189,22 +308,48 @@ function RestaurantFoldedCard({ onPress, record, summary, useCommunitySummary }:
       <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.expandButton, pressed && styles.pressed]}>
         <Text style={styles.expandButtonText}>Ver detalles</Text>
       </Pressable>
+      {onEdit || onMarkVisited || onDelete ? (
+        <View style={styles.cardActions}>
+          {onEdit ? <ActionButton icon={EditIcon} label="Editar" onPress={onEdit} /> : null}
+          {onMarkVisited ? <ActionButton label="Ya he ido" onPress={onMarkVisited} /> : null}
+          {onDelete ? (
+            <ActionButton danger disabled={deleting} icon={TrashIcon} label={deleting ? "Eliminando" : "Eliminar"} onPress={onDelete} />
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
 
 type RestaurantDetailOverlayProps = {
+  deleting: boolean;
   record: SavedRestaurantRecord;
   summary?: RestaurantCommunitySummary;
   useCommunitySummary: boolean;
   width: number;
   onClose: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onMarkVisited?: () => void;
 };
 
-function RestaurantDetailOverlay({ onClose, record, summary, useCommunitySummary, width }: RestaurantDetailOverlayProps) {
-  const rating = useCommunitySummary ? summary?.medianRating ?? null : record.food_rating;
-  const priceRange = useCommunitySummary ? summary?.priceRangeMode ?? null : record.price_range;
-  const cuisineTypes = useCommunitySummary ? summary?.cuisineTypes ?? [] : record.cuisine_types;
+function RestaurantDetailOverlay({
+  deleting,
+  onClose,
+  onDelete,
+  onEdit,
+  onMarkVisited,
+  record,
+  summary,
+  useCommunitySummary,
+  width,
+}: RestaurantDetailOverlayProps) {
+  const visits = getVisitSnapshots(record);
+  const [visitIndex, setVisitIndex] = useState(0);
+  const activeVisit = visits[visitIndex] ?? buildSnapshotFromRecord(record);
+  const rating = useCommunitySummary ? summary?.medianRating ?? null : activeVisit.food_rating;
+  const priceRange = useCommunitySummary ? summary?.priceRangeMode ?? null : activeVisit.price_range;
+  const cuisineTypes = useCommunitySummary ? summary?.cuisineTypes ?? [] : activeVisit.cuisine_types;
   const hasCommunityInfo = Boolean(summary && summary.reviewCount > 0);
   const googleMapsUrl = getGoogleMapsUrl({
     address: record.address,
@@ -236,11 +381,40 @@ function RestaurantDetailOverlay({ onClose, record, summary, useCommunitySummary
           </Pressable>
         </View>
 
+        {onEdit || onMarkVisited || onDelete ? (
+          <View style={styles.detailActions}>
+            {onEdit ? <ActionButton icon={EditIcon} label="Editar" onPress={onEdit} /> : null}
+            {onMarkVisited ? <ActionButton label="Ya he ido" onPress={onMarkVisited} /> : null}
+            {onDelete ? (
+              <ActionButton danger disabled={deleting} icon={TrashIcon} label={deleting ? "Eliminando" : "Eliminar"} onPress={onDelete} />
+            ) : null}
+          </View>
+        ) : null}
+
         <ScrollView showsVerticalScrollIndicator={false} style={styles.detailScroll}>
+          {!useCommunitySummary && visits.length > 1 ? (
+            <View style={styles.visitNavigator}>
+              <View style={styles.visitNavigatorText}>
+                <Text style={styles.visitNavigatorTitle}>
+                  Visita {visitIndex + 1} de {visits.length}
+                </Text>
+                <Text style={styles.visitNavigatorDate}>{formatSavedDate(activeVisit.saved_at)}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setVisitIndex((index) => (index + 1) % visits.length)}
+                style={({ pressed }) => [styles.visitNextButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.visitNextText}>Siguiente</Text>
+                <SavoryIcon color={theme.colors.text} glyph={NextIcon} size={17} strokeWidth={2.4} />
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={styles.heroSummary}>
             <MetricTile label="Puntuación" value={useCommunitySummary && !hasCommunityInfo ? "Sin datos" : formatRating(rating)} />
             <MetricTile label="Precio" value={priceRange ?? "Sin datos"} />
-            <MetricTile label="Guardado" value={formatSavedDate(record.saved_at)} />
+            <MetricTile label="Guardado" value={formatSavedDate(activeVisit.saved_at)} />
           </View>
 
           <DetailSection title="Información">
@@ -262,7 +436,7 @@ function RestaurantDetailOverlay({ onClose, record, summary, useCommunitySummary
               <>
                 <DetailLine label="Puntuación" value={formatRating(rating)} />
                 <DetailLine label="Tipo de comida" value={cuisineTypes.join(", ") || "Sin información"} />
-                {!useCommunitySummary ? <PhotoStrip photos={record.dish_photos} /> : null}
+                {!useCommunitySummary ? <PhotoStrip photos={activeVisit.dish_photos} /> : null}
               </>
             )}
           </DetailSection>
@@ -270,18 +444,14 @@ function RestaurantDetailOverlay({ onClose, record, summary, useCommunitySummary
           {!useCommunitySummary ? (
             <>
               <DetailSection title="Local">
-                <DetailLine label="Ocasión" value={record.occasion_types.join(", ") || "Sin información"} />
+                <DetailLine label="Ocasión" value={activeVisit.occasion_types.join(", ") || "Sin información"} />
                 <DetailLine label="Precio por persona" value={priceRange ?? "Sin información"} />
-                <PhotoStrip photos={record.local_photos} />
+                <PhotoStrip photos={activeVisit.local_photos} />
               </DetailSection>
 
               <DetailSection title="Servicio">
-                <DetailLine label="Servicio" value={record.service_comment ?? "Sin información"} />
-                <DetailLine label="Comentario general" value={record.general_comment ?? "Sin información"} />
-              </DetailSection>
-
-              <DetailSection title="Visibilidad">
-                <DetailLine label="Estado" value={record.visibility === "public" ? "Público" : "Privado"} />
+                <DetailLine label="Servicio" value={activeVisit.service_comment ?? "Sin información"} />
+                <DetailLine label="Comentario general" value={activeVisit.general_comment ?? "Sin información"} />
               </DetailSection>
             </>
           ) : (
@@ -300,6 +470,82 @@ function RestaurantDetailOverlay({ onClose, record, summary, useCommunitySummary
       </View>
     </View>
   );
+}
+
+type ActionButtonProps = {
+  danger?: boolean;
+  disabled?: boolean;
+  icon?: SavoryIconGlyph;
+  label: string;
+  onPress: () => void;
+};
+
+function ActionButton({ danger, disabled, icon, label, onPress }: ActionButtonProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionButton,
+        danger && styles.actionButtonDanger,
+        disabled && styles.actionButtonDisabled,
+        pressed && styles.pressed,
+      ]}
+    >
+      {icon ? <SavoryIcon color={danger ? theme.colors.danger : theme.colors.text} glyph={icon} size={16} strokeWidth={2.2} /> : null}
+      <Text style={[styles.actionButtonText, danger && styles.actionButtonTextDanger]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function recordToPlace(record: SavedRestaurantRecord): SavoryPlace {
+  return {
+    address: record.address ?? undefined,
+    id: record.google_place_id,
+    location:
+      record.location_lat !== null && record.location_lng !== null
+        ? {
+            lat: record.location_lat,
+            lng: record.location_lng,
+          }
+        : undefined,
+    name: record.name,
+    phone: record.phone ?? undefined,
+    placeId: record.google_place_id,
+    types: record.google_types,
+    website: record.website ?? undefined,
+  };
+}
+
+function confirmRestaurantDeletion(record: SavedRestaurantRecord, isWishlist: boolean) {
+  if (typeof window === "undefined" || typeof window.confirm !== "function") {
+    return true;
+  }
+
+  const listName = isWishlist ? "Deseados" : "restaurantes visitados";
+  return window.confirm(`¿Seguro que quieres eliminar "${record.name}" de tu lista de ${listName}?`);
+}
+
+function getVisitSnapshots(record: SavedRestaurantRecord) {
+  const visits = record.visit_history.length > 0 ? record.visit_history : [buildSnapshotFromRecord(record)];
+
+  return [...visits].sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+}
+
+function buildSnapshotFromRecord(record: SavedRestaurantRecord): RestaurantVisitSnapshot {
+  return {
+    cuisine_types: record.cuisine_types,
+    dish_photos: record.dish_photos,
+    food_rating: record.food_rating,
+    general_comment: record.general_comment,
+    local_photos: record.local_photos,
+    occasion_types: record.occasion_types,
+    price_range: record.price_range,
+    saved_at: record.saved_at,
+    service_comment: record.service_comment,
+    visibility: record.visibility,
+  };
 }
 
 type DetailSectionProps = {
@@ -336,10 +582,12 @@ type LinkLineProps = DetailLineProps & {
 
 function LinkLine({ label, onPress, value }: LinkLineProps) {
   return (
-    <Pressable accessibilityRole="link" onPress={onPress} style={({ pressed }) => [styles.linkLine, pressed && styles.pressed]}>
+    <View style={styles.linkLine}>
       <Text style={styles.detailLineLabel}>{label}</Text>
-      <Text style={styles.linkLineValue}>{value}</Text>
-    </Pressable>
+      <Pressable accessibilityRole="link" onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
+        <Text style={styles.linkLineValue}>{value}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -414,6 +662,20 @@ function formatSavedDate(value: string) {
   });
 }
 
+function formatRestaurantDateSummary(record: SavedRestaurantRecord) {
+  if (record.status !== "visited") {
+    return formatSavedDate(record.saved_at);
+  }
+
+  const dates = getVisitSnapshots(record).map((visit) => formatSavedDate(visit.saved_at));
+
+  if (dates.length <= 1) {
+    return dates[0] ?? formatSavedDate(record.saved_at);
+  }
+
+  return `Fechas: ${dates.slice(0, 2).join(" · ")}${dates.length > 2 ? ` +${dates.length - 2}` : ""}`;
+}
+
 function formatRating(value: number | null) {
   if (!value) {
     return "0/10";
@@ -439,7 +701,8 @@ function matchesRestaurantFilters(
   return (
     overlapsFilter(cuisineTypes, filters.cuisineTypes) &&
     overlapsFilter(occasionTypes, filters.occasionTypes) &&
-    (filters.priceRanges.length === 0 || (priceRange ? filters.priceRanges.includes(priceRange) : false))
+    (filters.priceRanges.length === 0 || (priceRange ? filters.priceRanges.includes(priceRange) : false)) &&
+    (filters.visibilities.length === 0 || filters.visibilities.includes(record.visibility))
   );
 }
 
@@ -504,6 +767,45 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     lineHeight: 16,
+  },
+  cardActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2,
+  },
+  detailActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  actionButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  actionButtonDanger: {
+    backgroundColor: "#FFF1F0",
+    borderColor: "#FFD1CC",
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
+  },
+  actionButtonText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+  },
+  actionButtonTextDanger: {
+    color: theme.colors.danger,
   },
   pressed: {
     opacity: 0.74,
@@ -613,6 +915,53 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     paddingBottom: 12,
+  },
+  visitNavigator: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+    marginBottom: 10,
+    padding: 11,
+  },
+  visitNavigatorText: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  visitNavigatorTitle: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
+  visitNavigatorDate: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 16,
+  },
+  visitNextButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderColor: "#FFDAD5",
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 4,
+    height: 34,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  visitNextText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
   },
   metricTile: {
     backgroundColor: theme.colors.coralSoft,

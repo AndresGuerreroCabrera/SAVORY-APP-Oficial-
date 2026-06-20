@@ -9,14 +9,23 @@ import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from ".
 import { saveRestaurant } from "../../services/savedRestaurants";
 import { supabase } from "../../services/supabase";
 import type { SavoryPlace } from "../../types/place";
-import type { RestaurantPhoto, SavedRestaurantStatus, SavedRestaurantVisibility } from "../../types/restaurant";
+import type {
+  RestaurantPhoto,
+  SavedRestaurantRecord,
+  SavedRestaurantStatus,
+  SavedRestaurantVisibility,
+} from "../../types/restaurant";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
 type RestaurantSaveSheetProps = {
   place: SavoryPlace;
   width: number;
+  historyMode?: "append" | "replace_latest";
+  initialRecord?: SavedRestaurantRecord;
+  initialStatus?: SavedRestaurantStatus;
+  lockStatus?: boolean;
   onClose: () => void;
-  onSaved?: () => void;
+  onSaved?: () => Promise<void> | void;
 };
 
 type VisitedStep = "food" | "local" | "service" | "visibility";
@@ -29,20 +38,29 @@ const BackIcon = ChevronLeft as SavoryIconGlyph;
 const RATING_VALUES = Array.from({ length: 21 }, (_, index) => index / 2);
 const MAX_PHOTO_BYTES = 700000;
 
-export function RestaurantSaveSheet({ onSaved, place, width, onClose }: RestaurantSaveSheetProps) {
+export function RestaurantSaveSheet({
+  historyMode = "append",
+  initialRecord,
+  initialStatus,
+  lockStatus,
+  onSaved,
+  place,
+  width,
+  onClose,
+}: RestaurantSaveSheetProps) {
   const dishInputRef = useRef<HTMLInputElement | null>(null);
   const localInputRef = useRef<HTMLInputElement | null>(null);
-  const [status, setStatus] = useState<SavedRestaurantStatus>("want_to_go");
+  const [status, setStatus] = useState<SavedRestaurantStatus>(initialStatus ?? initialRecord?.status ?? "want_to_go");
   const [step, setStep] = useState<VisitedStep>("food");
-  const [visibility, setVisibility] = useState<SavedRestaurantVisibility>("private");
-  const [cuisineTypes, setCuisineTypes] = useState<string[]>([]);
-  const [dishPhotos, setDishPhotos] = useState<RestaurantPhoto[]>([]);
-  const [localPhotos, setLocalPhotos] = useState<RestaurantPhoto[]>([]);
-  const [foodRating, setFoodRating] = useState(0);
-  const [occasionTypes, setOccasionTypes] = useState<string[]>([]);
-  const [priceRange, setPriceRange] = useState<string | null>(null);
-  const [serviceComment, setServiceComment] = useState("");
-  const [generalComment, setGeneralComment] = useState("");
+  const [visibility, setVisibility] = useState<SavedRestaurantVisibility>(initialRecord?.visibility ?? "private");
+  const [cuisineTypes, setCuisineTypes] = useState<string[]>(initialRecord?.cuisine_types ?? []);
+  const [dishPhotos, setDishPhotos] = useState<RestaurantPhoto[]>(initialRecord?.dish_photos ?? []);
+  const [localPhotos, setLocalPhotos] = useState<RestaurantPhoto[]>(initialRecord?.local_photos ?? []);
+  const [foodRating, setFoodRating] = useState(initialRecord?.food_rating ?? 0);
+  const [occasionTypes, setOccasionTypes] = useState<string[]>(initialRecord?.occasion_types ?? []);
+  const [priceRange, setPriceRange] = useState<string | null>(initialRecord?.price_range ?? null);
+  const [serviceComment, setServiceComment] = useState(initialRecord?.service_comment ?? "");
+  const [generalComment, setGeneralComment] = useState(initialRecord?.general_comment ?? "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,15 +88,17 @@ export function RestaurantSaveSheet({ onSaved, place, width, onClose }: Restaura
       return;
     }
 
-    const { error: saveError } = await saveRestaurant({
+    const { alreadyExists, error: saveError } = await saveRestaurant({
       cuisineTypes: status === "visited" ? cuisineTypes : [],
       dishPhotos: status === "visited" ? dishPhotos : [],
       foodRating: status === "visited" ? foodRating : 0,
       generalComment: status === "visited" ? generalComment.trim() || null : null,
+      historyMode,
       localPhotos: status === "visited" ? localPhotos : [],
       occasionTypes: status === "visited" ? occasionTypes : [],
       place,
       priceRange: status === "visited" ? priceRange : null,
+      savedAt: historyMode === "replace_latest" ? initialRecord?.saved_at : undefined,
       serviceComment: status === "visited" ? serviceComment.trim() || null : null,
       status,
       userId: data.session.user.id,
@@ -92,8 +112,13 @@ export function RestaurantSaveSheet({ onSaved, place, width, onClose }: Restaura
       return;
     }
 
+    if (alreadyExists) {
+      setMessage("Ya tienes este restaurante guardado en Deseados.");
+      return;
+    }
+
     setMessage(status === "visited" ? "Restaurante guardado en tu lista." : "Restaurante guardado en Deseados.");
-    onSaved?.();
+    await onSaved?.();
     window.setTimeout(onClose, 1000);
   };
 
@@ -188,12 +213,14 @@ export function RestaurantSaveSheet({ onSaved, place, width, onClose }: Restaura
           </View>
         ) : null}
 
-        <SegmentedChoice
-          leftLabel="Quiero ir"
-          onChange={setStatus}
-          rightLabel="Ya he ido"
-          value={status}
-        />
+        {lockStatus ? null : (
+          <SegmentedChoice
+            leftLabel="Quiero ir"
+            onChange={setStatus}
+            rightLabel="Ya he ido"
+            value={status}
+          />
+        )}
 
         {isVisited ? (
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={styles.visitedScroll}>

@@ -33,7 +33,7 @@ export function ListHubScreen() {
             </Pressable>
           </View>
 
-          <FiltersDropdown filters={filters} onChange={setFilters} width={contentWidth} />
+          <FiltersDropdown filters={filters} includeVisibility onChange={setFilters} width={contentWidth} />
           <SavedRestaurantList contentWidth={contentWidth} filters={filters} status="visited" />
         </View>
       )}

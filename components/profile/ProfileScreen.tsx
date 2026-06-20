@@ -1,8 +1,11 @@
 import type { Session } from "@supabase/supabase-js";
+import { useRouter } from "expo-router";
 import { ArrowLeft, ChevronDown, LockKeyhole, LogOut, Mail, ShieldCheck, UserRound } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import type { RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -43,6 +46,10 @@ type FriendshipRow = {
   requester_id: string;
   status: "pending" | "accepted";
 };
+type ProfilePhoto = {
+  dataUrl: string;
+  fileName: string;
+};
 
 const UserIcon = UserRound as SavoryIconGlyph;
 const MailIcon = Mail as SavoryIconGlyph;
@@ -64,9 +71,12 @@ const webInputReset: TextStyle & {
   outline: "none",
 };
 const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
+const MAX_PROFILE_PHOTO_BYTES = 650 * 1024;
 
 export function ProfileScreen() {
   const { width: viewportWidth } = useWindowDimensions();
+  const registerPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -76,12 +86,15 @@ export function ProfileScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [registrationAvatar, setRegistrationAvatar] = useState<ProfilePhoto | null>(null);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [nextUsername, setNextUsername] = useState("");
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [updatingProfile, setUpdatingProfile] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const overlayWidth = Math.max(280, viewportWidth - 36);
@@ -154,6 +167,7 @@ export function ProfileScreen() {
       const { data: createdProfile, error: createProfileError } = await client
         .from("profiles")
         .insert({
+          avatar_url: getMetadataAvatarUrl(currentSession),
           id: currentSession.user.id,
           username: getFallbackUsername(currentSession),
         })
@@ -186,6 +200,10 @@ export function ProfileScreen() {
     setShowPasswordChange(false);
   }, [session?.user.id]);
 
+  useEffect(() => {
+    setNextUsername(profile?.username ?? "");
+  }, [profile?.username]);
+
   const resetFeedback = useCallback(() => {
     setError(null);
     setMessage(null);
@@ -195,6 +213,139 @@ export function ProfileScreen() {
     setPassword("");
     setConfirmPassword("");
   }, []);
+
+  const handleRegistrationPhotoPick = useCallback(
+    async (fileList: FileList | null) => {
+      resetFeedback();
+      const result = await readProfilePhoto(fileList);
+
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      if (result.photo) {
+        setRegistrationAvatar(result.photo);
+      }
+    },
+    [resetFeedback],
+  );
+
+  const handleProfilePhotoPick = useCallback(
+    async (fileList: FileList | null) => {
+      resetFeedback();
+
+      if (!supabase || !session) {
+        setError("No hay una sesión válida para actualizar el perfil.");
+        return;
+      }
+
+      const result = await readProfilePhoto(fileList);
+
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      if (!result.photo) {
+        return;
+      }
+
+      setUpdatingProfile(true);
+      const { data, error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: result.photo.dataUrl })
+        .eq("id", session.user.id)
+        .select("id, username, display_name, avatar_url, created_at, updated_at")
+        .single();
+
+      if (!updateError) {
+        await supabase.auth.updateUser({
+          data: {
+            avatar_url: result.photo.dataUrl,
+          },
+        });
+      }
+
+      setUpdatingProfile(false);
+
+      if (updateError) {
+        setError("No se pudo actualizar la foto de perfil.");
+        return;
+      }
+
+      setProfile(data);
+      setMessage("Foto de perfil actualizada.");
+    },
+    [resetFeedback, session],
+  );
+
+  const handleUsernameUpdate = useCallback(async () => {
+    resetFeedback();
+
+    if (!supabase || !session) {
+      setError("No hay una sesión válida para actualizar el perfil.");
+      return;
+    }
+
+    const normalizedUsername = normalizeUsername(nextUsername);
+
+    if (!normalizedUsername) {
+      setError("El nombre de usuario debe tener entre 3 y 32 caracteres.");
+      return;
+    }
+
+    if (normalizedUsername === profile?.username) {
+      setMessage("Ese ya es tu nombre de usuario.");
+      return;
+    }
+
+    setUpdatingProfile(true);
+    const { data: existingProfile, error: lookupError } = await supabase
+      .from("profiles")
+      .select("id")
+      .ilike("username", normalizedUsername)
+      .neq("id", session.user.id)
+      .maybeSingle();
+
+    if (lookupError) {
+      setUpdatingProfile(false);
+      setError("No se pudo comprobar si el usuario está disponible.");
+      return;
+    }
+
+    if (existingProfile) {
+      setUpdatingProfile(false);
+      setError("Ese nombre de usuario ya está ocupado.");
+      return;
+    }
+
+    const { data, error: updateError } = await supabase
+      .from("profiles")
+      .update({ username: normalizedUsername })
+      .eq("id", session.user.id)
+      .select("id, username, display_name, avatar_url, created_at, updated_at")
+      .single();
+
+    if (!updateError) {
+      await supabase.auth.updateUser({
+        data: {
+          username: normalizedUsername,
+        },
+      });
+    }
+
+    setUpdatingProfile(false);
+
+    if (updateError) {
+      setError("No se pudo cambiar el nombre de usuario. Puede que ya esté ocupado.");
+      return;
+    }
+
+    setProfile(data);
+    setNextUsername(data.username);
+    setMessage("Nombre de usuario actualizado.");
+  }, [nextUsername, profile?.username, resetFeedback, session]);
 
   const handleSignIn = useCallback(async () => {
     resetFeedback();
@@ -264,6 +415,7 @@ export function ProfileScreen() {
       password,
       options: {
         data: {
+          avatar_url: registrationAvatar?.dataUrl ?? null,
           username: normalizedUsername,
         },
         emailRedirectTo: getEmailRedirectUrl(),
@@ -278,8 +430,9 @@ export function ProfileScreen() {
     }
 
     setUsername("");
+    setRegistrationAvatar(null);
     setMessage("Te hemos enviado un correo de confirmación. Abre tu email y confirma la cuenta para poder iniciar sesión.");
-  }, [confirmPassword, email, password, resetAuthFields, resetFeedback, username]);
+  }, [confirmPassword, email, password, registrationAvatar, resetAuthFields, resetFeedback, username]);
 
   const handlePasswordChange = useCallback(async () => {
     resetFeedback();
@@ -381,7 +534,11 @@ export function ProfileScreen() {
                   style={({ pressed }) => [styles.profileDisclosure, pressed && styles.buttonPressed]}
                 >
                   <View style={styles.avatar}>
-                    <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={24} strokeWidth={2.3} />
+                    {profile?.avatar_url ? (
+                      <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+                    ) : (
+                      <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={24} strokeWidth={2.3} />
+                    )}
                   </View>
                   <View style={styles.identityText}>
                     <Text style={styles.nameText}>{profileName}</Text>
@@ -396,6 +553,45 @@ export function ProfileScreen() {
                     <Text numberOfLines={1} style={styles.emailText}>
                       {session.user.email}
                     </Text>
+
+                <ProfilePhotoPicker
+                  avatarUrl={profile?.avatar_url ?? null}
+                  buttonLabel={profile?.avatar_url ? "Cambiar foto de perfil" : "Añadir foto de perfil"}
+                  disabled={updatingProfile}
+                  inputRef={profilePhotoInputRef}
+                  onPick={handleProfilePhotoPick}
+                />
+
+                <View style={styles.usernameEditor}>
+                  <Text style={styles.fieldLabel}>Nombre de usuario</Text>
+                  <View style={styles.usernameEditorRow}>
+                    <View style={[styles.inputShell, styles.usernameInputShell]}>
+                      <SavoryIcon color={theme.colors.muted} glyph={UserIcon} size={18} strokeWidth={2.1} />
+                      <TextInput
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        onChangeText={setNextUsername}
+                        placeholder="Nombre de usuario"
+                        placeholderTextColor={theme.colors.faint}
+                        selectionColor={theme.colors.text}
+                        style={[styles.input, inputPlatformStyle]}
+                        value={nextUsername}
+                      />
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={updatingProfile}
+                      onPress={handleUsernameUpdate}
+                      style={({ pressed }) => [
+                        styles.compactButton,
+                        updatingProfile && styles.buttonDisabled,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={styles.compactButtonText}>Guardar</Text>
+                    </Pressable>
+                  </View>
+                </View>
 
                 {loadingProfile ? (
                   <View style={styles.loadingRow}>
@@ -452,13 +648,22 @@ export function ProfileScreen() {
                 </View>
 
                 {mode === "register" ? (
-                  <AuthInput
-                    autoCapitalize="none"
-                    icon={UserIcon}
-                    onChangeText={setUsername}
-                    placeholder="Nombre de usuario"
-                    value={username}
-                  />
+                  <>
+                    <AuthInput
+                      autoCapitalize="none"
+                      icon={UserIcon}
+                      onChangeText={setUsername}
+                      placeholder="Nombre de usuario"
+                      value={username}
+                    />
+                    <ProfilePhotoPicker
+                      avatarUrl={registrationAvatar?.dataUrl ?? null}
+                      buttonLabel={registrationAvatar ? "Cambiar foto de perfil" : "Añadir foto de perfil"}
+                      disabled={submitting}
+                      inputRef={registerPhotoInputRef}
+                      onPick={handleRegistrationPhotoPick}
+                    />
+                  </>
                 ) : null}
 
                 <AuthInput
@@ -657,6 +862,55 @@ function AuthInput({
   );
 }
 
+type ProfilePhotoPickerProps = {
+  avatarUrl: string | null;
+  buttonLabel: string;
+  disabled?: boolean;
+  inputRef: RefObject<HTMLInputElement | null>;
+  onPick: (fileList: FileList | null) => void;
+};
+
+function ProfilePhotoPicker({ avatarUrl, buttonLabel, disabled, inputRef, onPick }: ProfilePhotoPickerProps) {
+  return (
+    <View style={styles.photoPicker}>
+      <View style={styles.photoPreview}>
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={styles.photoPreviewImage} />
+        ) : (
+          <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={22} strokeWidth={2.2} />
+        )}
+      </View>
+      <View style={styles.photoPickerContent}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={disabled || Platform.OS !== "web"}
+          onPress={() => inputRef.current?.click()}
+          style={({ pressed }) => [
+            styles.photoButton,
+            (disabled || Platform.OS !== "web") && styles.buttonDisabled,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text style={styles.photoButtonText}>{buttonLabel}</Text>
+        </Pressable>
+        <Text style={styles.photoHelper}>JPG, PNG o WebP. Máximo 650 KB.</Text>
+      </View>
+      {Platform.OS === "web" ? (
+        <input
+          ref={inputRef}
+          accept="image/jpeg,image/png,image/webp"
+          style={{ display: "none" }}
+          type="file"
+          onChange={(event) => {
+            onPick(event.currentTarget.files);
+            event.currentTarget.value = "";
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 type StatusBlockProps = {
   icon: SavoryIconGlyph;
   text: string;
@@ -677,6 +931,7 @@ type FriendsConnectorSectionProps = {
 };
 
 function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSectionProps) {
+  const router = useRouter();
   const currentUserId = session.user.id;
   const [friendships, setFriendships] = useState<FriendshipRow[]>([]);
   const [friends, setFriends] = useState<SocialProfile[]>([]);
@@ -736,8 +991,9 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
     }
 
     const client = supabase;
+    const channelName = `friendships-${currentUserId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const channel = client
-      .channel(`friendships-${currentUserId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "friendships", filter: `requester_id=eq.${currentUserId}` },
@@ -956,7 +1212,7 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
 
               return (
                 <View key={request.id} style={styles.socialRow}>
-                  <UserChip profile={requester} />
+                  <UserChip onPress={() => router.push(`/users/${requester.id}` as never)} profile={requester} />
                   <View style={styles.requestActions}>
                     <Pressable
                       accessibilityRole="button"
@@ -1010,7 +1266,7 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
 
                 return (
                   <View key={result.id} style={styles.socialRow}>
-                    <UserChip profile={result} />
+                    <UserChip onPress={() => router.push(`/users/${result.id}` as never)} profile={result} />
                     <Pressable
                       accessibilityRole="button"
                       disabled={isDisabled}
@@ -1058,7 +1314,7 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
         <ScrollView nestedScrollEnabled style={styles.friendsScroll}>
           {friends.map((friend) => (
             <View key={friend.id} style={styles.friendRow}>
-              <UserChip profile={friend} />
+              <UserChip onPress={() => router.push(`/users/${friend.id}` as never)} profile={friend} />
             </View>
           ))}
         </ScrollView>
@@ -1070,19 +1326,34 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
 }
 
 type UserChipProps = {
+  onPress?: () => void;
   profile: SocialProfile;
 };
 
-function UserChip({ profile }: UserChipProps) {
-  return (
+function UserChip({ onPress, profile }: UserChipProps) {
+  const content = (
     <View style={styles.userChip}>
       <View style={styles.userMiniAvatar}>
-        <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={18} strokeWidth={2.2} />
+        {profile.avatar_url ? (
+          <Image source={{ uri: profile.avatar_url }} style={styles.userMiniAvatarImage} />
+        ) : (
+          <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={18} strokeWidth={2.2} />
+        )}
       </View>
       <Text numberOfLines={1} style={styles.userChipName}>
         {profile.username}
       </Text>
     </View>
+  );
+
+  if (!onPress) {
+    return content;
+  }
+
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.userChipButton, pressed && styles.buttonPressed]}>
+      {content}
+    </Pressable>
   );
 }
 
@@ -1185,6 +1456,43 @@ function normalizeFriendSearch(value: string) {
     .slice(0, 32);
 }
 
+async function readProfilePhoto(fileList: FileList | null): Promise<{ error?: string; photo?: ProfilePhoto }> {
+  const file = fileList?.[0];
+
+  if (!file) {
+    return {};
+  }
+
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    return { error: "La foto debe ser JPG, PNG o WebP." };
+  }
+
+  if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+    return { error: "La foto debe pesar menos de 650 KB." };
+  }
+
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("invalid-image"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("image-read-failed"));
+    reader.readAsDataURL(file);
+  });
+
+  return {
+    photo: {
+      dataUrl,
+      fileName: file.name,
+    },
+  };
+}
+
 function getDisplayName(session: Session | null, profile: UserProfile | null) {
   if (profile?.display_name?.trim()) {
     return profile.display_name.trim();
@@ -1201,6 +1509,11 @@ function getDisplayName(session: Session | null, profile: UserProfile | null) {
   }
 
   return session?.user.email?.split("@")[0] ?? "Usuario";
+}
+
+function getMetadataAvatarUrl(session: Session) {
+  const avatarUrl = session.user.user_metadata?.avatar_url;
+  return typeof avatarUrl === "string" && avatarUrl.startsWith("data:image/") ? avatarUrl : null;
 }
 
 function getFallbackUsername(session: Session) {
@@ -1380,13 +1693,23 @@ const styles = StyleSheet.create({
     gap: 10,
     minWidth: 0,
   },
+  userChipButton: {
+    borderRadius: theme.radius.lg,
+    flex: 1,
+    minWidth: 0,
+  },
   userMiniAvatar: {
     alignItems: "center",
     backgroundColor: theme.colors.coralSoft,
     borderRadius: theme.radius.pill,
     height: 38,
     justifyContent: "center",
+    overflow: "hidden",
     width: 38,
+  },
+  userMiniAvatarImage: {
+    height: "100%",
+    width: "100%",
   },
   userChipName: {
     color: theme.colors.text,
@@ -1514,6 +1837,87 @@ const styles = StyleSheet.create({
     height: "100%",
     minWidth: 0,
   },
+  photoPicker: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    padding: 12,
+  },
+  photoPreview: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderRadius: theme.radius.pill,
+    height: 50,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 50,
+  },
+  photoPreviewImage: {
+    height: "100%",
+    width: "100%",
+  },
+  photoPickerContent: {
+    flex: 1,
+    gap: 5,
+    minWidth: 0,
+  },
+  photoButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: theme.colors.coral,
+    borderRadius: theme.radius.pill,
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  photoButtonText: {
+    color: theme.colors.white,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
+  photoHelper: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 16,
+  },
+  usernameEditor: {
+    gap: 7,
+  },
+  usernameEditorRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  usernameInputShell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fieldLabel: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  compactButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.text,
+    borderRadius: theme.radius.pill,
+    height: 44,
+    justifyContent: "center",
+    paddingHorizontal: 13,
+  },
+  compactButtonText: {
+    color: theme.colors.white,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
   statusBlock: {
     alignItems: "flex-start",
     backgroundColor: theme.colors.coralSoft,
@@ -1629,7 +2033,12 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     height: 54,
     justifyContent: "center",
+    overflow: "hidden",
     width: 54,
+  },
+  avatarImage: {
+    height: "100%",
+    width: "100%",
   },
   identityText: {
     flex: 1,

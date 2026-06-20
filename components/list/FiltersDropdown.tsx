@@ -11,15 +11,20 @@ const ChevronIcon = ChevronDown as SavoryIconGlyph;
 
 type FiltersDropdownProps = {
   filters: RestaurantFilters;
+  includeVisibility?: boolean;
   width: number;
   onChange: (filters: RestaurantFilters) => void;
 };
 
-export function FiltersDropdown({ filters, onChange, width }: FiltersDropdownProps) {
+export function FiltersDropdown({ filters, includeVisibility, onChange, width }: FiltersDropdownProps) {
   const [open, setOpen] = useState(false);
   const [cuisineQuery, setCuisineQuery] = useState("");
   const [occasionQuery, setOccasionQuery] = useState("");
-  const activeCount = filters.cuisineTypes.length + filters.occasionTypes.length + filters.priceRanges.length;
+  const activeCount =
+    filters.cuisineTypes.length +
+    filters.occasionTypes.length +
+    filters.priceRanges.length +
+    (includeVisibility ? filters.visibilities.length : 0);
 
   return (
     <View style={[styles.container, { width }]}>
@@ -59,6 +64,21 @@ export function FiltersDropdown({ filters, onChange, width }: FiltersDropdownPro
               onToggle={(next) => onChange({ ...filters, priceRanges: next })}
             />
           </View>
+          {includeVisibility ? (
+            <View style={styles.filterSection}>
+              <Text style={styles.sectionTitle}>Visibilidad</Text>
+              <ChipCloud
+                items={["Público", "Privado"]}
+                selected={filters.visibilities.map((visibility) => (visibility === "public" ? "Público" : "Privado"))}
+                onToggle={(next) =>
+                  onChange({
+                    ...filters,
+                    visibilities: next.map((label) => (label === "Público" ? "public" : "private")),
+                  })
+                }
+              />
+            </View>
+          ) : null}
           {activeCount > 0 ? (
             <Pressable accessibilityRole="button" onPress={() => onChange(emptyRestaurantFilters())} style={styles.clearButton}>
               <Text style={styles.clearButtonText}>Limpiar filtros</Text>
@@ -137,6 +157,7 @@ export function emptyRestaurantFilters(): RestaurantFilters {
     cuisineTypes: [],
     occasionTypes: [],
     priceRanges: [],
+    visibilities: [],
   };
 }
 

@@ -8,6 +8,19 @@ export type RestaurantPhoto = {
   fileName?: string;
 };
 
+export type RestaurantVisitSnapshot = {
+  cuisine_types: string[];
+  dish_photos: RestaurantPhoto[];
+  food_rating: number;
+  general_comment: string | null;
+  local_photos: RestaurantPhoto[];
+  occasion_types: string[];
+  price_range: string | null;
+  saved_at: string;
+  service_comment: string | null;
+  visibility: SavedRestaurantVisibility;
+};
+
 export type SavedRestaurantRecord = {
   id: string;
   user_id: string;
@@ -31,6 +44,7 @@ export type SavedRestaurantRecord = {
   general_comment: string | null;
   saved_at: string;
   updated_at: string;
+  visit_history: RestaurantVisitSnapshot[];
 };
 
 export type RestaurantCommunitySummary = {
@@ -45,4 +59,5 @@ export type RestaurantFilters = {
   cuisineTypes: string[];
   occasionTypes: string[];
   priceRanges: string[];
+  visibilities: SavedRestaurantVisibility[];
 };
