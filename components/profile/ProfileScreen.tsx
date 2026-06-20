@@ -19,8 +19,10 @@ import type { TextStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BottomNav } from "../navigation/BottomNav";
+import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { floatingShadow, theme } from "../../constants/theme";
+import { compressImageFile } from "../../services/imageCompression";
 import { isSupabaseConfigured, supabase } from "../../services/supabase";
 
 type AuthMode = "login" | "register";
@@ -71,7 +73,9 @@ const webInputReset: TextStyle & {
   outline: "none",
 };
 const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
-const MAX_PROFILE_PHOTO_BYTES = 650 * 1024;
+const MAX_PROFILE_PHOTO_INPUT_BYTES = 6 * 1024 * 1024;
+const PROFILE_PHOTO_MAX_EDGE = 720;
+const PROFILE_PHOTO_QUALITY = 0.78;
 const SUPABASE_NETWORK_ERROR =
   "No se pudo conectar con Supabase. En local puede ser un bloqueo TLS/certificados de Windows; en Vercel revisa las variables publicas y redepliega.";
 
@@ -99,6 +103,7 @@ export function ProfileScreen() {
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewProfilePhoto, setPreviewProfilePhoto] = useState<{ caption: string; uri: string } | null>(null);
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const contentWidth = Math.min(overlayWidth, 520);
   const navWidth = Math.min(overlayWidth, 430);
@@ -587,13 +592,22 @@ export function ProfileScreen() {
                   onPress={() => setProfileMenuOpen((isOpen) => !isOpen)}
                   style={({ pressed }) => [styles.profileDisclosure, pressed && styles.buttonPressed]}
                 >
-                  <View style={styles.avatar}>
+                  <Pressable
+                    accessibilityRole={profile?.avatar_url ? "imagebutton" : "button"}
+                    onPress={(event) => {
+                      stopPressPropagation(event);
+                      if (profile?.avatar_url) {
+                        setPreviewProfilePhoto({ caption: profileName, uri: profile.avatar_url });
+                      }
+                    }}
+                    style={styles.avatar}
+                  >
                     {profile?.avatar_url ? (
                       <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
                     ) : (
                       <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={24} strokeWidth={2.3} />
                     )}
-                  </View>
+                  </Pressable>
                   <View style={styles.identityText}>
                     <Text style={styles.nameText}>{profileName}</Text>
                   </View>
@@ -614,6 +628,7 @@ export function ProfileScreen() {
                   disabled={updatingProfile}
                   inputRef={profilePhotoInputRef}
                   onPick={handleProfilePhotoPick}
+                  onPreview={(uri) => setPreviewProfilePhoto({ caption: profileName, uri })}
                 />
 
                 <View style={styles.usernameEditor}>
@@ -716,6 +731,7 @@ export function ProfileScreen() {
                       disabled={submitting}
                       inputRef={registerPhotoInputRef}
                       onPick={handleRegistrationPhotoPick}
+                      onPreview={(uri) => setPreviewProfilePhoto({ caption: "Foto de perfil", uri })}
                     />
                   </>
                 ) : null}
@@ -853,6 +869,13 @@ export function ProfileScreen() {
       <View pointerEvents="box-none" style={styles.bottomNav}>
         <BottomNav width={navWidth} />
       </View>
+      <ImageLightbox
+        caption={previewProfilePhoto?.caption ?? null}
+        imageUri={previewProfilePhoto?.uri ?? null}
+        onClose={() => setPreviewProfilePhoto(null)}
+        title={previewProfilePhoto?.caption ?? "Foto de perfil"}
+        visible={Boolean(previewProfilePhoto?.uri)}
+      />
     </View>
   );
 }
@@ -922,14 +945,21 @@ type ProfilePhotoPickerProps = {
   disabled?: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
   onPick: (fileList: FileList | null) => void;
+  onPreview: (uri: string) => void;
 };
 
-function ProfilePhotoPicker({ avatarUrl, buttonLabel, disabled, inputRef, onPick }: ProfilePhotoPickerProps) {
+function ProfilePhotoPicker({ avatarUrl, buttonLabel, disabled, inputRef, onPick, onPreview }: ProfilePhotoPickerProps) {
   return (
     <View style={styles.photoPicker}>
       <View style={styles.photoPreview}>
         {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.photoPreviewImage} />
+          <Pressable
+            accessibilityRole="imagebutton"
+            onPress={() => onPreview(avatarUrl)}
+            style={({ pressed }) => [styles.photoPreviewButton, pressed && styles.buttonPressed]}
+          >
+            <Image source={{ uri: avatarUrl }} style={styles.photoPreviewImage} />
+          </Pressable>
         ) : (
           <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={22} strokeWidth={2.2} />
         )}
@@ -998,6 +1028,13 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
   const [pendingFriendActionId, setPendingFriendActionId] = useState<string | null>(null);
   const [socialMessage, setSocialMessage] = useState<string | null>(null);
   const [socialError, setSocialError] = useState<string | null>(null);
+  const [previewSocialPhoto, setPreviewSocialPhoto] = useState<{ caption: string; uri: string } | null>(null);
+
+  const previewUserAvatar = useCallback((profile: SocialProfile) => {
+    if (profile.avatar_url) {
+      setPreviewSocialPhoto({ caption: profile.username, uri: profile.avatar_url });
+    }
+  }, []);
 
   const loadFriendships = useCallback(async () => {
     if (!supabase) {
@@ -1300,7 +1337,7 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
 
               return (
                 <View key={request.id} style={styles.socialRow}>
-                  <UserChip onPress={() => router.push(`/users/${requester.id}` as never)} profile={requester} />
+                  <UserChip onAvatarPress={previewUserAvatar} onPress={() => router.push(`/users/${requester.id}` as never)} profile={requester} />
                   <View style={styles.requestActions}>
                     <Pressable
                       accessibilityRole="button"
@@ -1354,7 +1391,7 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
 
                 return (
                   <View key={result.id} style={styles.socialRow}>
-                    <UserChip onPress={() => router.push(`/users/${result.id}` as never)} profile={result} />
+                    <UserChip onAvatarPress={previewUserAvatar} onPress={() => router.push(`/users/${result.id}` as never)} profile={result} />
                     <Pressable
                       accessibilityRole="button"
                       disabled={isDisabled}
@@ -1402,32 +1439,47 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
         <ScrollView nestedScrollEnabled style={styles.friendsScroll}>
           {friends.map((friend) => (
             <View key={friend.id} style={styles.friendRow}>
-              <UserChip onPress={() => router.push(`/users/${friend.id}` as never)} profile={friend} />
+              <UserChip onAvatarPress={previewUserAvatar} onPress={() => router.push(`/users/${friend.id}` as never)} profile={friend} />
             </View>
           ))}
         </ScrollView>
       ) : (
         <Text style={styles.emptyText}>Todavía no tienes amigos añadidos.</Text>
       )}
+      <ImageLightbox
+        caption={previewSocialPhoto?.caption ?? null}
+        imageUri={previewSocialPhoto?.uri ?? null}
+        onClose={() => setPreviewSocialPhoto(null)}
+        title={previewSocialPhoto?.caption ?? "Foto de perfil"}
+        visible={Boolean(previewSocialPhoto?.uri)}
+      />
     </View>
   );
 }
 
 type UserChipProps = {
+  onAvatarPress?: (profile: SocialProfile) => void;
   onPress?: () => void;
   profile: SocialProfile;
 };
 
-function UserChip({ onPress, profile }: UserChipProps) {
+function UserChip({ onAvatarPress, onPress, profile }: UserChipProps) {
   const content = (
     <View style={styles.userChip}>
-      <View style={styles.userMiniAvatar}>
+      <Pressable
+        accessibilityRole={profile.avatar_url ? "imagebutton" : "button"}
+        onPress={(event) => {
+          stopPressPropagation(event);
+          onAvatarPress?.(profile);
+        }}
+        style={styles.userMiniAvatar}
+      >
         {profile.avatar_url ? (
           <Image source={{ uri: profile.avatar_url }} style={styles.userMiniAvatarImage} />
         ) : (
           <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={18} strokeWidth={2.2} />
         )}
-      </View>
+      </Pressable>
       <Text numberOfLines={1} style={styles.userChipName}>
         {profile.username}
       </Text>
@@ -1555,23 +1607,21 @@ async function readProfilePhoto(fileList: FileList | null): Promise<{ error?: st
     return { error: "La foto debe ser JPG, PNG o WebP." };
   }
 
-  if (file.size > MAX_PROFILE_PHOTO_BYTES) {
-    return { error: "La foto debe pesar menos de 650 KB." };
+  if (file.size > MAX_PROFILE_PHOTO_INPUT_BYTES) {
+    return { error: "La foto debe pesar menos de 6 MB." };
   }
 
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
+  let dataUrl: string;
 
-      reject(new Error("invalid-image"));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("image-read-failed"));
-    reader.readAsDataURL(file);
-  });
+  try {
+    dataUrl = await compressImageFile(file, {
+      maxHeight: PROFILE_PHOTO_MAX_EDGE,
+      maxWidth: PROFILE_PHOTO_MAX_EDGE,
+      quality: PROFILE_PHOTO_QUALITY,
+    });
+  } catch {
+    return { error: "No se pudo comprimir la foto." };
+  }
 
   return {
     photo: {
@@ -1579,6 +1629,11 @@ async function readProfilePhoto(fileList: FileList | null): Promise<{ error?: st
       fileName: file.name,
     },
   };
+}
+
+function stopPressPropagation(event: unknown) {
+  const nativeEvent = (event as { nativeEvent?: { stopPropagation?: () => void } })?.nativeEvent;
+  nativeEvent?.stopPropagation?.();
 }
 
 function getDisplayName(session: Session | null, profile: UserProfile | null) {
@@ -1955,6 +2010,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
     width: 50,
+  },
+  photoPreviewButton: {
+    height: "100%",
+    width: "100%",
   },
   photoPreviewImage: {
     height: "100%",

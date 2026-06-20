@@ -20,6 +20,7 @@ import type {
   SavedRestaurantRecord,
   SavedRestaurantStatus,
 } from "../../types/restaurant";
+import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { RestaurantSaveSheet } from "./RestaurantSaveSheet";
 
@@ -632,23 +633,38 @@ type PhotoStripProps = {
 };
 
 function PhotoStrip({ photos }: PhotoStripProps) {
+  const [selectedPhoto, setSelectedPhoto] = useState<RestaurantPhoto | null>(null);
+
   if (photos.length === 0) {
     return <Text style={styles.emptyText}>Sin fotos</Text>;
   }
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-      <View style={styles.photoStrip}>
-        {photos.map((photo, index) => (
-          <View key={`${photo.fileName}-${index}`} style={styles.photoItem}>
-            {photo.dataUrl ? <Image source={{ uri: photo.dataUrl }} style={styles.photoImage} /> : null}
-            <Text numberOfLines={2} style={styles.photoCaption}>
-              {photo.caption || photo.fileName || "Foto"}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+    <>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+        <View style={styles.photoStrip}>
+          {photos.map((photo, index) => (
+            <View key={`${photo.fileName}-${index}`} style={styles.photoItem}>
+              {photo.dataUrl ? (
+                <Pressable accessibilityRole="imagebutton" onPress={() => setSelectedPhoto(photo)} style={({ pressed }) => pressed && styles.pressed}>
+                  <Image source={{ uri: photo.dataUrl }} style={styles.photoImage} />
+                </Pressable>
+              ) : null}
+              <Text numberOfLines={2} style={styles.photoCaption}>
+                {photo.caption || photo.fileName || "Foto"}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      <ImageLightbox
+        caption={selectedPhoto?.caption || selectedPhoto?.fileName || null}
+        imageUri={selectedPhoto?.dataUrl ?? null}
+        onClose={() => setSelectedPhoto(null)}
+        title={selectedPhoto?.caption || selectedPhoto?.fileName || "Foto"}
+        visible={Boolean(selectedPhoto?.dataUrl)}
+      />
+    </>
   );
 }
 

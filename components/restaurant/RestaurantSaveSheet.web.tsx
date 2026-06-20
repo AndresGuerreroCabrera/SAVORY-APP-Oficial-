@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, PanResponder, Pressable, ScrollView, StyleShe
 
 import { CUISINE_TYPES, OCCASION_TYPES, PRICE_RANGES } from "../../constants/restaurantOptions";
 import { floatingShadow, theme } from "../../constants/theme";
+import { compressImageFile } from "../../services/imageCompression";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
 import { saveRestaurant } from "../../services/savedRestaurants";
 import { supabase } from "../../services/supabase";
@@ -15,6 +16,7 @@ import type {
   SavedRestaurantStatus,
   SavedRestaurantVisibility,
 } from "../../types/restaurant";
+import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
 type RestaurantSaveSheetProps = {
@@ -36,7 +38,9 @@ const CloseIcon = X as SavoryIconGlyph;
 const BackIcon = ChevronLeft as SavoryIconGlyph;
 
 const RATING_VALUES = Array.from({ length: 21 }, (_, index) => index / 2);
-const MAX_PHOTO_BYTES = 700000;
+const MAX_PHOTO_INPUT_BYTES = 8 * 1024 * 1024;
+const RESTAURANT_PHOTO_MAX_EDGE = 1400;
+const RESTAURANT_PHOTO_QUALITY = 0.78;
 const SUPABASE_NETWORK_ERROR =
   "No se pudo conectar con Supabase. En local puede ser un bloqueo TLS/certificados de Windows; en Vercel revisa las variables publicas y redepliega.";
 const STEP_MENU_ITEMS: Array<{ label: string; value: VisitedStep }> = [
@@ -72,6 +76,7 @@ export function RestaurantSaveSheet({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<RestaurantPhoto | null>(null);
 
   const saveCurrentRestaurant = async () => {
     setError(null);
@@ -146,12 +151,24 @@ export function RestaurantSaveSheet({
       return;
     }
 
-    if (!file.type.startsWith("image/") || file.size > MAX_PHOTO_BYTES) {
-      setError("Usa una imagen menor de 700 KB.");
+    if (!file.type.startsWith("image/") || file.size > MAX_PHOTO_INPUT_BYTES) {
+      setError("Usa una imagen menor de 8 MB.");
       return;
     }
 
-    const dataUrl = await readFileAsDataUrl(file);
+    let dataUrl: string;
+
+    try {
+      dataUrl = await compressImageFile(file, {
+        maxHeight: RESTAURANT_PHOTO_MAX_EDGE,
+        maxWidth: RESTAURANT_PHOTO_MAX_EDGE,
+        quality: RESTAURANT_PHOTO_QUALITY,
+      });
+    } catch {
+      setError("No se pudo comprimir la imagen.");
+      return;
+    }
+
     const nextPhoto = {
       caption: "",
       dataUrl,
@@ -273,6 +290,7 @@ export function RestaurantSaveSheet({
                   onPick={handlePhotoPick}
                   photos={dishPhotos}
                   onCaptionChange={updatePhotoCaption}
+                  onPreview={setPreviewPhoto}
                 />
                 <RatingCircles value={foodRating} onChange={setFoodRating} />
                 <Pressable accessibilityRole="button" onPress={() => setStep("local")} style={styles.primaryButton}>
@@ -297,6 +315,7 @@ export function RestaurantSaveSheet({
                   onPick={handlePhotoPick}
                   photos={localPhotos}
                   onCaptionChange={updatePhotoCaption}
+                  onPreview={setPreviewPhoto}
                 />
                 <Text style={styles.fieldLabel}>Precio por persona</Text>
                 <ChipCloud single items={PRICE_RANGES} selected={priceRange ? [priceRange] : []} onToggle={(next) => setPriceRange(next[0] ?? null)} />
@@ -368,6 +387,13 @@ export function RestaurantSaveSheet({
         {message ? <Text style={styles.successText}>{message}</Text> : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </View>
+      <ImageLightbox
+        caption={previewPhoto?.caption || previewPhoto?.fileName || null}
+        imageUri={previewPhoto?.dataUrl ?? null}
+        onClose={() => setPreviewPhoto(null)}
+        title={previewPhoto?.caption || previewPhoto?.fileName || "Foto"}
+        visible={Boolean(previewPhoto?.dataUrl)}
+      />
     </View>
   );
 }
@@ -512,9 +538,10 @@ type PhotoPickerProps = {
   photos: RestaurantPhoto[];
   onCaptionChange: (kind: PhotoKind, index: number, caption: string) => void;
   onPick: (kind: PhotoKind, fileList: FileList | null) => void;
+  onPreview: (photo: RestaurantPhoto) => void;
 };
 
-function PhotoPicker({ buttonLabel, inputRef, kind, onCaptionChange, onPick, photos }: PhotoPickerProps) {
+function PhotoPicker({ buttonLabel, inputRef, kind, onCaptionChange, onPick, onPreview, photos }: PhotoPickerProps) {
   return (
     <View style={styles.photoArea}>
       <input
@@ -533,7 +560,11 @@ function PhotoPicker({ buttonLabel, inputRef, kind, onCaptionChange, onPick, pho
       </Pressable>
       {photos.map((photo, index) => (
         <View key={`${photo.fileName}-${index}`} style={styles.photoRow}>
-          {photo.dataUrl ? <Image source={{ uri: photo.dataUrl }} style={styles.photoPreview} /> : null}
+          {photo.dataUrl ? (
+            <Pressable accessibilityRole="imagebutton" onPress={() => onPreview(photo)} style={({ pressed }) => pressed && styles.buttonPressed}>
+              <Image source={{ uri: photo.dataUrl }} style={styles.photoPreview} />
+            </Pressable>
+          ) : null}
           <TextInput
             onChangeText={(text) => onCaptionChange(kind, index, text)}
             placeholder={kind === "dish" ? "Nombre del plato" : "Nombre de la foto"}
@@ -606,16 +637,6 @@ function StepNav({ onBack, title }: StepNavProps) {
       <Text style={styles.stepTitle}>{title}</Text>
     </View>
   );
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }
 
 function getSupabaseUiError(error: unknown, fallback: string) {

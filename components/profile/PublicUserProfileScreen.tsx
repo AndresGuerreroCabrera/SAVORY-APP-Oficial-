@@ -8,6 +8,7 @@ import { floatingShadow, theme } from "../../constants/theme";
 import { supabase } from "../../services/supabase";
 import { BottomNav } from "../navigation/BottomNav";
 import { SavedRestaurantList } from "../restaurant/SavedRestaurantList";
+import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
 type PublicProfile = {
@@ -30,6 +31,7 @@ export function PublicUserProfileScreen() {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<{ caption: string; uri: string } | null>(null);
 
   useEffect(() => {
     if (!supabase || !id) {
@@ -91,13 +93,21 @@ export function PublicUserProfileScreen() {
               <Text style={styles.errorText}>{error}</Text>
             ) : profile ? (
               <View style={styles.identityRow}>
-                <View style={styles.avatar}>
+                <Pressable
+                  accessibilityRole={profile.avatar_url ? "imagebutton" : "button"}
+                  onPress={() => {
+                    if (profile.avatar_url) {
+                      setPreviewPhoto({ caption: profile.username, uri: profile.avatar_url });
+                    }
+                  }}
+                  style={styles.avatar}
+                >
                   {profile.avatar_url ? (
                     <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
                   ) : (
                     <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={26} strokeWidth={2.3} />
                   )}
-                </View>
+                </Pressable>
                 <View style={styles.identityText}>
                   <Text numberOfLines={1} style={styles.username}>
                     {profile.username}
@@ -124,6 +134,13 @@ export function PublicUserProfileScreen() {
       <View pointerEvents="box-none" style={styles.bottomNav}>
         <BottomNav width={navWidth} />
       </View>
+      <ImageLightbox
+        caption={previewPhoto?.caption ?? null}
+        imageUri={previewPhoto?.uri ?? null}
+        onClose={() => setPreviewPhoto(null)}
+        title={previewPhoto?.caption ?? "Foto de perfil"}
+        visible={Boolean(previewPhoto?.uri)}
+      />
     </View>
   );
 }
