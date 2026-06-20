@@ -37,6 +37,8 @@ const BackIcon = ChevronLeft as SavoryIconGlyph;
 
 const RATING_VALUES = Array.from({ length: 21 }, (_, index) => index / 2);
 const MAX_PHOTO_BYTES = 700000;
+const SUPABASE_NETWORK_ERROR =
+  "No se pudo conectar con Supabase. En local puede ser un bloqueo TLS/certificados de Windows; en Vercel revisa las variables publicas y redepliega.";
 const STEP_MENU_ITEMS: Array<{ label: string; value: VisitedStep }> = [
   { label: "Comida", value: "food" },
   { label: "Local", value: "local" },
@@ -86,9 +88,18 @@ export function RestaurantSaveSheet({
     }
 
     setSaving(true);
-    const { data } = await supabase.auth.getSession();
+    let sessionData;
 
-    if (!data.session) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      sessionData = data;
+    } catch (sessionError) {
+      setSaving(false);
+      setError(getSupabaseUiError(sessionError, "No se pudo cargar tu sesión."));
+      return;
+    }
+
+    if (!sessionData.session) {
       setSaving(false);
       setError("Inicia sesión en Perfil para guardar restaurantes.");
       return;
@@ -107,14 +118,14 @@ export function RestaurantSaveSheet({
       savedAt: historyMode === "replace_latest" ? initialRecord?.saved_at : undefined,
       serviceComment: status === "visited" ? serviceComment.trim() || null : null,
       status,
-      userId: data.session.user.id,
+      userId: sessionData.session.user.id,
       visibility: status === "visited" ? visibility : "private",
     });
 
     setSaving(false);
 
     if (saveError) {
-      setError("No se pudo guardar. Revisa que la migración de restaurantes guardados esté aplicada.");
+      setError(getSupabaseUiError(saveError, saveError.message || "No se pudo guardar el restaurante."));
       return;
     }
 
@@ -605,6 +616,18 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function getSupabaseUiError(error: unknown, fallback: string) {
+  const message =
+    error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error ?? "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes("failed to fetch") || normalizedMessage.includes("networkerror")) {
+    return SUPABASE_NETWORK_ERROR;
+  }
+
+  return fallback;
 }
 
 const styles = StyleSheet.create({

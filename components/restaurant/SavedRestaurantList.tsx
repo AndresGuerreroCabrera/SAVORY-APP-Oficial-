@@ -62,24 +62,28 @@ export function SavedRestaurantList({ contentWidth, filters, publicUserId, statu
     setLoading(true);
     setError(null);
 
-    const { data, error: loadError } = publicUserId
-      ? await getPublicUserVisitedRestaurants(publicUserId)
-      : await getCurrentUserSavedRestaurants(status);
+    try {
+      const { data, error: loadError } = publicUserId
+        ? await getPublicUserVisitedRestaurants(publicUserId)
+        : await getCurrentUserSavedRestaurants(status);
 
-    if (loadError) {
+      if (loadError) {
+        setRecords([]);
+        setError(loadError.message);
+        return;
+      }
+
+      setRecords(data);
+
+      if (status === "want_to_go") {
+        setSummaries(await getCommunitySummaries(data.map((record) => record.google_place_id)));
+      }
+    } catch {
       setRecords([]);
+      setError("No se pudieron cargar los restaurantes.");
+    } finally {
       setLoading(false);
-      setError(loadError.message);
-      return;
     }
-
-    setRecords(data);
-
-    if (status === "want_to_go") {
-      setSummaries(await getCommunitySummaries(data.map((record) => record.google_place_id)));
-    }
-
-    setLoading(false);
   }, [publicUserId, status]);
 
   useEffect(() => {

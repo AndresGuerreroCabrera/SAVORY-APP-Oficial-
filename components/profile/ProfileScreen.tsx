@@ -72,6 +72,8 @@ const webInputReset: TextStyle & {
 };
 const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
 const MAX_PROFILE_PHOTO_BYTES = 650 * 1024;
+const SUPABASE_NETWORK_ERROR =
+  "No se pudo conectar con Supabase. En local puede ser un bloqueo TLS/certificados de Windows; en Vercel revisa las variables publicas y redepliega.";
 
 export function ProfileScreen() {
   const { width: viewportWidth } = useWindowDimensions();
@@ -110,12 +112,21 @@ export function ProfileScreen() {
 
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setSession(data.session);
-        setLoadingSession(false);
-      }
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (mounted) {
+          setSession(data.session);
+          setLoadingSession(false);
+        }
+      })
+      .catch((sessionError) => {
+        if (mounted) {
+          setError(getSupabaseUiError(sessionError, "No se pudo cargar tu sesion."));
+          setSession(null);
+          setLoadingSession(false);
+        }
+      });
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
@@ -142,50 +153,57 @@ export function ProfileScreen() {
     async function loadProfile() {
       setLoadingProfile(true);
 
-      const { data, error: profileError } = await client
-        .from("profiles")
-        .select("id, username, display_name, avatar_url, created_at, updated_at")
-        .eq("id", currentSession.user.id)
-        .maybeSingle();
+      try {
+        const { data, error: profileError } = await client
+          .from("profiles")
+          .select("id, username, display_name, avatar_url, created_at, updated_at")
+          .eq("id", currentSession.user.id)
+          .maybeSingle();
 
-      if (!active) {
-        return;
-      }
+        if (!active) {
+          return;
+        }
 
-      if (profileError) {
+        if (profileError) {
+          setLoadingProfile(false);
+          setError(getSupabaseUiError(profileError, "No se pudo cargar tu perfil público."));
+          return;
+        }
+
+        if (data) {
+          setProfile(data);
+          setLoadingProfile(false);
+          return;
+        }
+
+        const { data: createdProfile, error: createProfileError } = await client
+          .from("profiles")
+          .insert({
+            avatar_url: getMetadataAvatarUrl(currentSession),
+            id: currentSession.user.id,
+            username: getFallbackUsername(currentSession),
+          })
+          .select("id, username, display_name, avatar_url, created_at, updated_at")
+          .single();
+
+        if (!active) {
+          return;
+        }
+
         setLoadingProfile(false);
-        setError("No se pudo cargar tu perfil público.");
-        return;
+
+        if (createProfileError) {
+          setError(getSupabaseUiError(createProfileError, "Tu sesión existe, pero todavía no se pudo crear el perfil público."));
+          return;
+        }
+
+        setProfile(createdProfile);
+      } catch (profileException) {
+        if (active) {
+          setLoadingProfile(false);
+          setError(getSupabaseUiError(profileException, "No se pudo cargar tu perfil público."));
+        }
       }
-
-      if (data) {
-        setProfile(data);
-        setLoadingProfile(false);
-        return;
-      }
-
-      const { data: createdProfile, error: createProfileError } = await client
-        .from("profiles")
-        .insert({
-          avatar_url: getMetadataAvatarUrl(currentSession),
-          id: currentSession.user.id,
-          username: getFallbackUsername(currentSession),
-        })
-        .select("id, username, display_name, avatar_url, created_at, updated_at")
-        .single();
-
-      if (!active) {
-        return;
-      }
-
-      setLoadingProfile(false);
-
-      if (createProfileError) {
-        setError("Tu sesión existe, pero todavía no se pudo crear el perfil público.");
-        return;
-      }
-
-      setProfile(createdProfile);
     }
 
     loadProfile();
@@ -258,14 +276,6 @@ export function ProfileScreen() {
         .eq("id", session.user.id)
         .select("id, username, display_name, avatar_url, created_at, updated_at")
         .single();
-
-      if (!updateError) {
-        await supabase.auth.updateUser({
-          data: {
-            avatar_url: result.photo.dataUrl,
-          },
-        });
-      }
 
       setUpdatingProfile(false);
 
@@ -363,15 +373,23 @@ export function ProfileScreen() {
     }
 
     setSubmitting(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
-      password,
-    });
+    let signInError: unknown = null;
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+      signInError = error;
+    } catch (error) {
+      signInError = error;
+    }
+
     setSubmitting(false);
     resetAuthFields();
 
     if (signInError) {
-      setError("No se pudo iniciar sesión. Revisa tus datos y confirma tu correo si acabas de registrarte.");
+      setError(getSupabaseUiError(signInError, "No se pudo iniciar sesión. Revisa tus datos y confirma tu correo si acabas de registrarte."));
       return;
     }
 
@@ -410,22 +428,29 @@ export function ProfileScreen() {
     }
 
     setSubmitting(true);
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        data: {
-          avatar_url: registrationAvatar?.dataUrl ?? null,
-          username: normalizedUsername,
+    let signUpError: unknown = null;
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          data: {
+            username: normalizedUsername,
+          },
+          emailRedirectTo: getEmailRedirectUrl(),
         },
-        emailRedirectTo: getEmailRedirectUrl(),
-      },
-    });
+      });
+      signUpError = error;
+    } catch (error) {
+      signUpError = error;
+    }
+
     setSubmitting(false);
     resetAuthFields();
 
     if (signUpError) {
-      setError("No se pudo crear la cuenta. Revisa los datos o inténtalo más tarde.");
+      setError(getSupabaseUiError(signUpError, "No se pudo crear la cuenta. Revisa los datos o inténtalo más tarde."));
       return;
     }
 
@@ -458,28 +483,43 @@ export function ProfileScreen() {
     }
 
     setSubmitting(true);
-    const { error: reauthError } = await supabase.auth.signInWithPassword({
-      email: session.user.email,
-      password: oldPassword,
-    });
+    let reauthError: unknown = null;
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: session.user.email,
+        password: oldPassword,
+      });
+      reauthError = error;
+    } catch (error) {
+      reauthError = error;
+    }
 
     if (reauthError) {
       setSubmitting(false);
       setOldPassword("");
-      setError("No se pudo verificar la contraseña antigua.");
+      setError(getSupabaseUiError(reauthError, "No se pudo verificar la contraseña antigua."));
       return;
     }
 
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
+    let updateError: unknown = null;
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      updateError = error;
+    } catch (error) {
+      updateError = error;
+    }
+
     setSubmitting(false);
     setOldPassword("");
     setNewPassword("");
     setConfirmNewPassword("");
 
     if (updateError) {
-      setError("No se pudo cambiar la contraseña. Inténtalo de nuevo.");
+      setError(getSupabaseUiError(updateError, "No se pudo cambiar la contraseña. Inténtalo de nuevo."));
       return;
     }
 
@@ -495,7 +535,21 @@ export function ProfileScreen() {
     }
 
     setSubmitting(true);
-    await supabase.auth.signOut();
+
+    try {
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        setError(getSupabaseUiError(error, "No se pudo cerrar sesión."));
+        setSubmitting(false);
+        return;
+      }
+    } catch (error) {
+      setError(getSupabaseUiError(error, "No se pudo cerrar sesión."));
+      setSubmitting(false);
+      return;
+    }
+
     setSubmitting(false);
     setProfileMenuOpen(false);
     setMessage("Sesión cerrada.");
@@ -951,34 +1005,38 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
     }
 
     setLoadingSocial(true);
-    const { data, error: friendshipsError } = await supabase
-      .from("friendships")
-      .select(
-        "id, requester_id, receiver_id, status, requester:profiles!friendships_requester_id_fkey(id, username, display_name, avatar_url), receiver:profiles!friendships_receiver_id_fkey(id, username, display_name, avatar_url)",
-      )
-      .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
+    try {
+      const { data, error: friendshipsError } = await supabase
+        .from("friendships")
+        .select(
+          "id, requester_id, receiver_id, status, requester:profiles!friendships_requester_id_fkey(id, username, display_name, avatar_url), receiver:profiles!friendships_receiver_id_fkey(id, username, display_name, avatar_url)",
+        )
+        .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
 
-    setLoadingSocial(false);
+      if (friendshipsError) {
+        setSocialError(getSupabaseUiError(friendshipsError, "No se pudieron cargar tus amistades. Revisa que la migración de friendships esté aplicada."));
+        return;
+      }
 
-    if (friendshipsError) {
-      setSocialError("No se pudieron cargar tus amistades. Revisa que la migración de friendships esté aplicada.");
-      return;
+      const nextFriendships = (data ?? [])
+        .map(normalizeFriendshipRow)
+        .filter((row): row is FriendshipRow => Boolean(row));
+
+      setFriendships(nextFriendships);
+      setIncomingRequests(
+        nextFriendships.filter((row) => row.status === "pending" && row.receiver_id === currentUserId),
+      );
+      setFriends(
+        nextFriendships
+          .filter((row) => row.status === "accepted")
+          .map((row) => (row.requester_id === currentUserId ? row.receiver : row.requester))
+          .filter((profile): profile is SocialProfile => Boolean(profile)),
+      );
+    } catch (error) {
+      setSocialError(getSupabaseUiError(error, "No se pudieron cargar tus amistades."));
+    } finally {
+      setLoadingSocial(false);
     }
-
-    const nextFriendships = (data ?? [])
-      .map(normalizeFriendshipRow)
-      .filter((row): row is FriendshipRow => Boolean(row));
-
-    setFriendships(nextFriendships);
-    setIncomingRequests(
-      nextFriendships.filter((row) => row.status === "pending" && row.receiver_id === currentUserId),
-    );
-    setFriends(
-      nextFriendships
-        .filter((row) => row.status === "accepted")
-        .map((row) => (row.requester_id === currentUserId ? row.receiver : row.requester))
-        .filter((profile): profile is SocialProfile => Boolean(profile)),
-    );
   }, [currentUserId]);
 
   useEffect(() => {
@@ -1033,40 +1091,49 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
     setSearchingUsers(true);
 
     const timeout = setTimeout(async () => {
-      const { data, error: searchError } = await client
-        .from("profiles")
-        .select("id, username, display_name, avatar_url")
-        .ilike("username", `${normalizedQuery}%`)
-        .neq("id", currentUserId)
-        .order("username", { ascending: true })
-        .limit(8);
+      try {
+        const { data, error: searchError } = await client
+          .from("profiles")
+          .select("id, username, display_name, avatar_url")
+          .ilike("username", `${normalizedQuery}%`)
+          .neq("id", currentUserId)
+          .order("username", { ascending: true })
+          .limit(8);
 
-      if (!active) {
-        return;
+        if (!active) {
+          return;
+        }
+
+        if (searchError) {
+          setSearchResults([]);
+          setSocialError(getSupabaseUiError(searchError, "No se pudo buscar usuarios ahora mismo."));
+          return;
+        }
+
+        const nextResults = (data ?? [])
+          .map(normalizeSocialProfile)
+          .filter((profile): profile is SocialProfile => Boolean(profile))
+          .map((profile) => {
+            const relationship = getFriendshipStatus(currentUserId, profile.id, friendships);
+
+            return {
+              ...profile,
+              friendshipId: relationship.friendshipId,
+              friendshipStatus: relationship.status,
+            };
+          });
+
+        setSearchResults(nextResults);
+      } catch (error) {
+        if (active) {
+          setSearchResults([]);
+          setSocialError(getSupabaseUiError(error, "No se pudo buscar usuarios ahora mismo."));
+        }
+      } finally {
+        if (active) {
+          setSearchingUsers(false);
+        }
       }
-
-      setSearchingUsers(false);
-
-      if (searchError) {
-        setSearchResults([]);
-        setSocialError("No se pudo buscar usuarios ahora mismo.");
-        return;
-      }
-
-      const nextResults = (data ?? [])
-        .map(normalizeSocialProfile)
-        .filter((profile): profile is SocialProfile => Boolean(profile))
-        .map((profile) => {
-          const relationship = getFriendshipStatus(currentUserId, profile.id, friendships);
-
-          return {
-            ...profile,
-            friendshipId: relationship.friendshipId,
-            friendshipStatus: relationship.status,
-          };
-        });
-
-      setSearchResults(nextResults);
     }, 240);
 
     return () => {
@@ -1089,16 +1156,23 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
       resetSocialFeedback();
       setPendingFriendActionId(target.id);
 
-      const { error: requestError } = await supabase.from("friendships").insert({
-        requester_id: currentUserId,
-        receiver_id: target.id,
-        status: "pending",
-      });
+      let requestError: unknown = null;
+
+      try {
+        const { error } = await supabase.from("friendships").insert({
+          requester_id: currentUserId,
+          receiver_id: target.id,
+          status: "pending",
+        });
+        requestError = error;
+      } catch (error) {
+        requestError = error;
+      }
 
       setPendingFriendActionId(null);
 
       if (requestError) {
-        setSocialError("No se pudo enviar la solicitud. Puede que ya exista una relación con ese usuario.");
+        setSocialError(getSupabaseUiError(requestError, "No se pudo enviar la solicitud. Puede que ya exista una relación con ese usuario."));
         return;
       }
 
@@ -1117,16 +1191,23 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
       resetSocialFeedback();
       setPendingFriendActionId(friendshipId);
 
-      const { error: acceptError } = await supabase
-        .from("friendships")
-        .update({ status: "accepted" })
-        .eq("id", friendshipId)
-        .eq("receiver_id", currentUserId);
+      let acceptError: unknown = null;
+
+      try {
+        const { error } = await supabase
+          .from("friendships")
+          .update({ status: "accepted" })
+          .eq("id", friendshipId)
+          .eq("receiver_id", currentUserId);
+        acceptError = error;
+      } catch (error) {
+        acceptError = error;
+      }
 
       setPendingFriendActionId(null);
 
       if (acceptError) {
-        setSocialError("No se pudo aceptar la solicitud.");
+        setSocialError(getSupabaseUiError(acceptError, "No se pudo aceptar la solicitud."));
         return;
       }
 
@@ -1145,16 +1226,23 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
       resetSocialFeedback();
       setPendingFriendActionId(friendshipId);
 
-      const { error: rejectError } = await supabase
-        .from("friendships")
-        .delete()
-        .eq("id", friendshipId)
-        .eq("receiver_id", currentUserId);
+      let rejectError: unknown = null;
+
+      try {
+        const { error } = await supabase
+          .from("friendships")
+          .delete()
+          .eq("id", friendshipId)
+          .eq("receiver_id", currentUserId);
+        rejectError = error;
+      } catch (error) {
+        rejectError = error;
+      }
 
       setPendingFriendActionId(null);
 
       if (rejectError) {
-        setSocialError("No se pudo rechazar la solicitud.");
+        setSocialError(getSupabaseUiError(rejectError, "No se pudo rechazar la solicitud."));
         return;
       }
 
@@ -1509,6 +1597,18 @@ function getDisplayName(session: Session | null, profile: UserProfile | null) {
   }
 
   return session?.user.email?.split("@")[0] ?? "Usuario";
+}
+
+function getSupabaseUiError(error: unknown, fallback: string) {
+  const message =
+    error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error ?? "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes("failed to fetch") || normalizedMessage.includes("networkerror")) {
+    return SUPABASE_NETWORK_ERROR;
+  }
+
+  return fallback;
 }
 
 function getMetadataAvatarUrl(session: Session) {

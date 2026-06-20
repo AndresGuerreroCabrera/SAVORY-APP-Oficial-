@@ -57,6 +57,7 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
     saved_at: input.savedAt ?? new Date().toISOString(),
   };
 
+  try {
   const { data: existing, error: lookupError } = await supabase
     .from("saved_restaurants")
     .select("*")
@@ -66,7 +67,7 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
     .maybeSingle();
 
   if (lookupError) {
-    return { alreadyExists: false, data: null, error: lookupError };
+    return { alreadyExists: false, data: null, error: normalizeSupabaseError(lookupError) };
   }
 
   if (input.status === "want_to_go") {
@@ -80,7 +81,7 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
       .select("*")
       .single();
 
-    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error };
+    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error: normalizeSupabaseError(error) };
   }
 
   const nextVisit = buildVisitSnapshot(payload);
@@ -100,7 +101,7 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
       .select("*")
       .single();
 
-    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error };
+    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error: normalizeSupabaseError(error) };
   }
 
   const { data, error } = await supabase
@@ -109,7 +110,10 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
     .select("*")
     .single();
 
-  return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error };
+  return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error: normalizeSupabaseError(error) };
+  } catch (error) {
+    return { alreadyExists: false, data: null, error: normalizeSupabaseError(error) };
+  }
 }
 
 export async function deleteSavedRestaurant(recordId: string) {
@@ -117,19 +121,23 @@ export async function deleteSavedRestaurant(recordId: string) {
     return { error: new Error("Supabase no esta configurado.") };
   }
 
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-  if (sessionError || !sessionData.session) {
-    return { error: sessionError ?? new Error("Inicia sesion para modificar tus listas.") };
+    if (sessionError || !sessionData.session) {
+      return { error: normalizeSupabaseError(sessionError) ?? new Error("Inicia sesion para modificar tus listas.") };
+    }
+
+    const { error } = await supabase
+      .from("saved_restaurants")
+      .delete()
+      .eq("id", recordId)
+      .eq("user_id", sessionData.session.user.id);
+
+    return { error: normalizeSupabaseError(error) };
+  } catch (error) {
+    return { error: normalizeSupabaseError(error) };
   }
-
-  const { error } = await supabase
-    .from("saved_restaurants")
-    .delete()
-    .eq("id", recordId)
-    .eq("user_id", sessionData.session.user.id);
-
-  return { error };
 }
 
 export async function getCurrentUserSavedRestaurants(status: SavedRestaurantStatus) {
@@ -137,24 +145,31 @@ export async function getCurrentUserSavedRestaurants(status: SavedRestaurantStat
     return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no esta configurado.") };
   }
 
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-  if (sessionError || !sessionData.session) {
-    return { data: [] as SavedRestaurantRecord[], error: sessionError ?? new Error("Inicia sesion para ver tu lista.") };
+    if (sessionError || !sessionData.session) {
+      return {
+        data: [] as SavedRestaurantRecord[],
+        error: normalizeSupabaseError(sessionError) ?? new Error("Inicia sesion para ver tu lista."),
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .select("*")
+      .eq("user_id", sessionData.session.user.id)
+      .eq("status", status)
+      .order("saved_at", { ascending: false });
+
+    if (error) {
+      return { data: [] as SavedRestaurantRecord[], error: normalizeSupabaseError(error) };
+    }
+
+    return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
+  } catch (error) {
+    return { data: [] as SavedRestaurantRecord[], error: normalizeSupabaseError(error) };
   }
-
-  const { data, error } = await supabase
-    .from("saved_restaurants")
-    .select("*")
-    .eq("user_id", sessionData.session.user.id)
-    .eq("status", status)
-    .order("saved_at", { ascending: false });
-
-  if (error) {
-    return { data: [] as SavedRestaurantRecord[], error };
-  }
-
-  return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
 }
 
 export async function getPublicUserVisitedRestaurants(userId: string) {
@@ -162,19 +177,23 @@ export async function getPublicUserVisitedRestaurants(userId: string) {
     return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no esta configurado.") };
   }
 
-  const { data, error } = await supabase
-    .from("saved_restaurants")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("status", "visited")
-    .eq("visibility", "public")
-    .order("saved_at", { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "visited")
+      .eq("visibility", "public")
+      .order("saved_at", { ascending: false });
 
-  if (error) {
-    return { data: [] as SavedRestaurantRecord[], error };
+    if (error) {
+      return { data: [] as SavedRestaurantRecord[], error: normalizeSupabaseError(error) };
+    }
+
+    return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
+  } catch (error) {
+    return { data: [] as SavedRestaurantRecord[], error: normalizeSupabaseError(error) };
   }
-
-  return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
 }
 
 export async function getCurrentUserSavedRestaurantPins() {
@@ -182,24 +201,31 @@ export async function getCurrentUserSavedRestaurantPins() {
     return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no esta configurado.") };
   }
 
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-  if (sessionError || !sessionData.session) {
-    return { data: [] as SavedRestaurantRecord[], error: sessionError ?? new Error("Inicia sesion para ver tus pines.") };
+    if (sessionError || !sessionData.session) {
+      return {
+        data: [] as SavedRestaurantRecord[],
+        error: normalizeSupabaseError(sessionError) ?? new Error("Inicia sesion para ver tus pines."),
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .select("*")
+      .eq("user_id", sessionData.session.user.id)
+      .not("location_lat", "is", null)
+      .not("location_lng", "is", null);
+
+    if (error) {
+      return { data: [] as SavedRestaurantRecord[], error: normalizeSupabaseError(error) };
+    }
+
+    return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
+  } catch (error) {
+    return { data: [] as SavedRestaurantRecord[], error: normalizeSupabaseError(error) };
   }
-
-  const { data, error } = await supabase
-    .from("saved_restaurants")
-    .select("*")
-    .eq("user_id", sessionData.session.user.id)
-    .not("location_lat", "is", null)
-    .not("location_lng", "is", null);
-
-  if (error) {
-    return { data: [] as SavedRestaurantRecord[], error };
-  }
-
-  return { data: (data ?? []).map(normalizeSavedRestaurant), error: null };
 }
 
 export async function getRestaurantCommunitySummary(googlePlaceId: string) {
@@ -207,18 +233,22 @@ export async function getRestaurantCommunitySummary(googlePlaceId: string) {
     return emptyCommunitySummary();
   }
 
-  const { data, error } = await supabase
-    .from("saved_restaurants")
-    .select("cuisine_types, food_rating, occasion_types, price_range")
-    .eq("google_place_id", googlePlaceId)
-    .eq("status", "visited")
-    .eq("visibility", "public");
+  try {
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .select("cuisine_types, food_rating, occasion_types, price_range")
+      .eq("google_place_id", googlePlaceId)
+      .eq("status", "visited")
+      .eq("visibility", "public");
 
-  if (error) {
+    if (error) {
+      return emptyCommunitySummary();
+    }
+
+    return buildCommunitySummary(data ?? []);
+  } catch {
     return emptyCommunitySummary();
   }
-
-  return buildCommunitySummary(data ?? []);
 }
 
 export async function getCommunitySummaries(googlePlaceIds: string[]) {
@@ -228,31 +258,35 @@ export async function getCommunitySummaries(googlePlaceIds: string[]) {
     return new Map<string, RestaurantCommunitySummary>();
   }
 
-  const { data, error } = await supabase
-    .from("saved_restaurants")
-    .select("google_place_id, cuisine_types, food_rating, occasion_types, price_range")
-    .in("google_place_id", uniquePlaceIds)
-    .eq("status", "visited")
-    .eq("visibility", "public");
+  try {
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .select("google_place_id, cuisine_types, food_rating, occasion_types, price_range")
+      .in("google_place_id", uniquePlaceIds)
+      .eq("status", "visited")
+      .eq("visibility", "public");
 
-  if (error) {
-    return new Map<string, RestaurantCommunitySummary>();
-  }
-
-  const grouped = new Map<string, unknown[]>();
-
-  for (const row of data ?? []) {
-    const record = row as { google_place_id?: unknown };
-    const placeId = typeof record.google_place_id === "string" ? record.google_place_id : "";
-
-    if (!placeId) {
-      continue;
+    if (error) {
+      return new Map<string, RestaurantCommunitySummary>();
     }
 
-    grouped.set(placeId, [...(grouped.get(placeId) ?? []), row]);
-  }
+    const grouped = new Map<string, unknown[]>();
 
-  return new Map(Array.from(grouped, ([placeId, rows]) => [placeId, buildCommunitySummary(rows)]));
+    for (const row of data ?? []) {
+      const record = row as { google_place_id?: unknown };
+      const placeId = typeof record.google_place_id === "string" ? record.google_place_id : "";
+
+      if (!placeId) {
+        continue;
+      }
+
+      grouped.set(placeId, [...(grouped.get(placeId) ?? []), row]);
+    }
+
+    return new Map(Array.from(grouped, ([placeId, rows]) => [placeId, buildCommunitySummary(rows)]));
+  } catch {
+    return new Map<string, RestaurantCommunitySummary>();
+  }
 }
 
 function normalizeSavedRestaurant(value: unknown): SavedRestaurantRecord {
@@ -354,6 +388,23 @@ function emptyCommunitySummary(): RestaurantCommunitySummary {
     priceRangeMode: null,
     reviewCount: 0,
   };
+}
+
+function normalizeSupabaseError(error: unknown) {
+  if (!error) {
+    return null;
+  }
+
+  const message = error instanceof Error ? error.message : String((error as { message?: unknown }).message ?? error);
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes("failed to fetch") || normalizedMessage.includes("networkerror")) {
+    return new Error(
+      "No se pudo conectar con Supabase. Si ocurre en local en Windows, revisa la comprobacion de certificados/revocacion TLS; si ocurre en Vercel, redepliega con las variables EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+    );
+  }
+
+  return error instanceof Error ? error : new Error(message);
 }
 
 function getMedian(values: number[]) {

@@ -355,14 +355,23 @@ export default function SavoryMap() {
     let active = true;
 
     async function loadSavedPins() {
-      const { data } = await getCurrentUserSavedRestaurantPins();
+      const { data, error } = await getCurrentUserSavedRestaurantPins();
 
       if (active) {
+        if (error) {
+          drawSavedRestaurantPins([]);
+          return;
+        }
+
         drawSavedRestaurantPins(data);
       }
     }
 
-    void loadSavedPins();
+    void loadSavedPins().catch(() => {
+      if (active) {
+        drawSavedRestaurantPins([]);
+      }
+    });
 
     return () => {
       active = false;
