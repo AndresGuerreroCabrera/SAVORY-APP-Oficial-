@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { VercelAnalytics } from "../components/analytics/VercelAnalytics";
+import { VercelSpeedInsights } from "../components/analytics/VercelSpeedInsights";
 
 export default function RootLayout() {
   return (
@@ -10,6 +11,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }} />
       <VercelAnalytics />
+      <VercelSpeedInsights />
     </SafeAreaProvider>
   );
 }

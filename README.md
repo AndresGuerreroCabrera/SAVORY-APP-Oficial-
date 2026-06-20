@@ -20,7 +20,7 @@ Tambien incluye:
 - Google Places para busqueda de sitios.
 - Supabase Auth para registro, login, confirmacion de correo y cambio de contrasena.
 - Tabla publica `profiles` propuesta mediante migracion SQL con RLS.
-- Vercel Analytics integrado solo en web.
+- Vercel Analytics y Speed Insights integrados solo en web.
 - Separacion `.web.tsx` / `.native.tsx` para preparar compatibilidad movil.
 
 ## Stack
@@ -35,6 +35,7 @@ Tambien incluye:
 - Google Places
 - Supabase JS
 - Vercel Analytics
+- Vercel Speed Insights
 - lucide-react-native para iconos
 
 ## Comandos
@@ -472,21 +473,24 @@ components/list/FiltersDropdown.tsx
 
 El desplegable `Filtros` ocupa el mismo ancho que el grupo de botones. Por ahora esta vacio a proposito: abre un panel sin opciones hasta que existan filtros reales y datos persistidos.
 
-## Vercel Analytics
+## Vercel Analytics Y Speed Insights
 
-Se integro Vercel Analytics.
+Se integro Vercel Analytics para pageviews y Vercel Speed Insights para Core Web Vitals.
 
 Archivos:
 
 ```txt
 components/analytics/VercelAnalytics.web.tsx
 components/analytics/VercelAnalytics.native.tsx
+components/analytics/VercelSpeedInsights.web.tsx
+components/analytics/VercelSpeedInsights.native.tsx
 ```
 
 En web:
 
 ```tsx
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 ```
 
 En native:
@@ -501,7 +505,7 @@ Se incluye en:
 app/_layout.tsx
 ```
 
-Asi Analytics solo carga en web y no afecta a iOS/Android cuando se construya la app movil.
+Asi Analytics y Speed Insights solo cargan en web y no afectan a iOS/Android cuando se construya la app movil.
 
 ## Layout Raiz
 
@@ -517,6 +521,7 @@ Responsabilidades:
 - `StatusBar`
 - Stack de Expo Router sin headers
 - Vercel Analytics
+- Vercel Speed Insights
 
 ## Tema Visual
 
@@ -609,6 +614,8 @@ components/list/FiltersDropdown.tsx
 components/profile/ProfileScreen.tsx
 components/analytics/VercelAnalytics.web.tsx
 components/analytics/VercelAnalytics.native.tsx
+components/analytics/VercelSpeedInsights.web.tsx
+components/analytics/VercelSpeedInsights.native.tsx
 components/ui/SavoryIcon.tsx
 constants/theme.ts
 constants/mapStyle.ts
@@ -729,4 +736,4 @@ Posibles siguientes pasos:
 - Implementar pantalla de favoritos.
 - Sustituir placeholder native por `react-native-maps`.
 - Anadir tests de componentes/servicios.
-- Anadir Speed Insights de Vercel si se quiere medir Core Web Vitals.
+- Revisar Speed Insights en Vercel tras desplegar y visitar la web para ver Core Web Vitals reales.
