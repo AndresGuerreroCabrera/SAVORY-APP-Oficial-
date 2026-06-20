@@ -335,7 +335,7 @@ export function ProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.header, { width: contentWidth }]}>
-            <Text style={styles.brand}>Savory</Text>
+            <View style={styles.titleAccent} />
             <Text style={styles.title}>Perfil</Text>
           </View>
 
@@ -707,16 +707,14 @@ const styles = StyleSheet.create({
     paddingTop: 22,
   },
   header: {
-    gap: 10,
+    gap: 8,
     marginBottom: 18,
   },
-  brand: {
-    color: theme.colors.black,
-    fontSize: 34,
-    fontWeight: "800",
-    letterSpacing: 0,
-    lineHeight: 42,
-    textAlign: "center",
+  titleAccent: {
+    backgroundColor: theme.colors.coral,
+    borderRadius: theme.radius.pill,
+    height: 4,
+    width: 34,
   },
   title: {
     color: theme.colors.text,

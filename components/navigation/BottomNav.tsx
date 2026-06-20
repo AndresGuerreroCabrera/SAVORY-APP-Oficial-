@@ -6,15 +6,22 @@ import { floatingShadow, theme } from "../../constants/theme";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
 type NavItem = {
+  activePaths?: string[];
   Icon: SavoryIconGlyph;
   key: string;
   label: string;
-  route?: "/" | "/profile";
+  route?: string;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { key: "collapse", label: "Contraer", Icon: ChevronDown as SavoryIconGlyph },
-  { key: "list", label: "Lista", Icon: List as SavoryIconGlyph },
+  {
+    key: "list",
+    label: "Lista",
+    Icon: List as SavoryIconGlyph,
+    route: "/list",
+    activePaths: ["/list", "/wishlist", "/groups"],
+  },
   { key: "home", label: "Inicio", Icon: Home as SavoryIconGlyph, route: "/" },
   { key: "grid", label: "Cuadrícula", Icon: Square as SavoryIconGlyph },
   { key: "profile", label: "Perfil", Icon: UserRound as SavoryIconGlyph, route: "/profile" },
@@ -30,29 +37,29 @@ export function BottomNav({ width }: BottomNavProps) {
 
   return (
     <View style={[styles.shell, width ? { width } : null]}>
-      {NAV_ITEMS.map(({ key, label, Icon, route }) => {
-        const active = route ? pathname === route : false;
+      {NAV_ITEMS.map(({ key, label, Icon, route, activePaths }) => {
+        const active = route ? (activePaths ?? [route]).includes(pathname) : false;
 
         return (
-        <Pressable
-          accessibilityLabel={label}
-          accessibilityRole="button"
-          hitSlop={10}
-          key={key}
-          onPress={route ? () => router.push(route as never) : undefined}
-          style={({ pressed }) => [
-            styles.item,
-            active && styles.itemActive,
-            pressed && styles.itemPressed,
-          ]}
-        >
-          <SavoryIcon
-            size={active ? 24 : 22}
-            color={active ? theme.colors.coral : theme.colors.text}
-            glyph={Icon}
-            strokeWidth={active ? 2.5 : 2.1}
-          />
-        </Pressable>
+          <Pressable
+            accessibilityLabel={label}
+            accessibilityRole="button"
+            hitSlop={10}
+            key={key}
+            onPress={route ? () => router.push(route as never) : undefined}
+            style={({ pressed }) => [
+              styles.item,
+              active && styles.itemActive,
+              pressed && styles.itemPressed,
+            ]}
+          >
+            <SavoryIcon
+              size={active ? 24 : 22}
+              color={active ? theme.colors.coral : theme.colors.text}
+              glyph={Icon}
+              strokeWidth={active ? 2.5 : 2.1}
+            />
+          </Pressable>
         );
       })}
     </View>

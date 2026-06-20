@@ -111,6 +111,37 @@ export function normalizeAutocompletePrediction(
   };
 }
 
+export function placeFromSearchResult(result: google.maps.places.PlaceResult): SavoryPlace {
+  const location = result.geometry?.location;
+  const lat = location?.lat();
+  const lng = location?.lng();
+  const types = result.types ?? [];
+  const name = result.name ?? "Sitio sin nombre";
+  const fallbackId = [
+    name,
+    typeof lat === "number" ? lat.toFixed(5) : "",
+    typeof lng === "number" ? lng.toFixed(5) : "",
+  ]
+    .filter(Boolean)
+    .join("-");
+
+  return {
+    id: result.place_id ?? fallbackId,
+    placeId: result.place_id ?? "",
+    name,
+    address: getShortAddress(result.formatted_address ?? result.vicinity),
+    category: getPlaceCategory(types),
+    types,
+    location:
+      typeof lat === "number" && typeof lng === "number"
+        ? {
+            lat,
+            lng,
+          }
+        : undefined,
+  };
+}
+
 export function placeFromDetails(
   details: google.maps.places.PlaceResult,
   fallback: SavoryPlace,

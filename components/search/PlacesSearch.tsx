@@ -1,4 +1,4 @@
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { TextStyle } from "react-native";
 import { Search, X } from "lucide-react-native";
 
@@ -19,6 +19,8 @@ type PlacesSearchProps = {
 
 const SearchIcon = Search as SavoryIconGlyph;
 const XIcon = X as SavoryIconGlyph;
+const RESULT_ROW_HEIGHT = 58;
+const VISIBLE_RESULT_ROWS = 3;
 const webInputFocusReset: TextStyle & {
   boxShadow?: string;
   caretColor?: string;
@@ -66,8 +68,14 @@ export function PlacesSearch({
             </Text>
           ) : null}
 
-          {!loading && !error
-            ? results.map((place) => (
+          {!loading && !error ? (
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={results.length > VISIBLE_RESULT_ROWS}
+              style={styles.resultsScroll}
+            >
+              {results.map((place) => (
                 <Pressable
                   accessibilityLabel={`Seleccionar ${place.name}`}
                   accessibilityRole="button"
@@ -85,8 +93,9 @@ export function PlacesSearch({
                     </Text>
                   </View>
                 </Pressable>
-              ))
-            : null}
+              ))}
+            </ScrollView>
+          ) : null}
         </View>
       ) : null}
 
@@ -134,9 +143,12 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.lg,
     borderWidth: 1,
     marginBottom: 10,
-    maxHeight: 292,
+    maxHeight: RESULT_ROW_HEIGHT * VISIBLE_RESULT_ROWS + 16,
     overflow: "hidden",
     paddingVertical: 8,
+  },
+  resultsScroll: {
+    maxHeight: RESULT_ROW_HEIGHT * VISIBLE_RESULT_ROWS,
   },
   stateRow: {
     alignItems: "center",
@@ -159,7 +171,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 12,
-    minHeight: 58,
+    minHeight: RESULT_ROW_HEIGHT,
     paddingHorizontal: 14,
     paddingVertical: 9,
   },

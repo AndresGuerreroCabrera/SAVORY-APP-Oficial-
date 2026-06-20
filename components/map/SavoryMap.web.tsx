@@ -12,6 +12,7 @@ import { theme } from "../../constants/theme";
 import {
   isFoodRelatedPlace,
   normalizeAutocompletePrediction,
+  placeFromSearchResult,
   placeFromDetails,
 } from "../../services/googlePlaces";
 import type { SavoryPlace } from "../../types/place";
@@ -19,7 +20,106 @@ import type { SavoryPlace } from "../../types/place";
 const DEFAULT_CENTER = { lat: 40.4168, lng: -3.7038 };
 const SEARCH_DEBOUNCE_MS = 260;
 const MIN_SEARCH_LENGTH = 2;
+const SEARCH_RADII_METERS = [1500, 5000, 15000, 50000] as const;
+const MAX_SEARCH_RESULTS = 12;
 const LocateIcon = LocateFixed as SavoryIconGlyph;
+
+function dedupePlaces(places: SavoryPlace[]) {
+  const seen = new Set<string>();
+
+  return places.filter((place) => {
+    const key = place.placeId || place.id;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function getDistanceMeters(from: google.maps.LatLngLiteral, to: google.maps.LatLngLiteral) {
+  const earthRadiusMeters = 6371000;
+  const fromLat = (from.lat * Math.PI) / 180;
+  const toLat = (to.lat * Math.PI) / 180;
+  const deltaLat = ((to.lat - from.lat) * Math.PI) / 180;
+  const deltaLng = ((to.lng - from.lng) * Math.PI) / 180;
+  const haversine =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(fromLat) * Math.cos(toLat) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+function searchAutocomplete(
+  autocomplete: google.maps.places.AutocompleteService,
+  input: string,
+): Promise<SavoryPlace[]> {
+  return new Promise((resolve, reject) => {
+    autocomplete.getPlacePredictions(
+      {
+        input,
+        types: ["establishment"],
+      },
+      (
+        predictions: google.maps.places.AutocompletePrediction[] | null,
+        status: string,
+      ) => {
+        if (status === "ZERO_RESULTS") {
+          resolve([]);
+          return;
+        }
+
+        if (status !== "OK" || !predictions) {
+          reject(new Error("autocomplete-unavailable"));
+          return;
+        }
+
+        const normalized = predictions.map(normalizeAutocompletePrediction);
+        const foodResults = normalized.filter(isFoodRelatedPlace);
+
+        resolve((foodResults.length > 0 ? foodResults : normalized).slice(0, MAX_SEARCH_RESULTS));
+      },
+    );
+  });
+}
+
+function searchPlacesNearUser(
+  placesService: google.maps.places.PlacesService,
+  input: string,
+  center: google.maps.LatLngLiteral,
+  radius: number,
+): Promise<SavoryPlace[]> {
+  return new Promise((resolve, reject) => {
+    placesService.textSearch(
+      {
+        location: center,
+        query: input,
+        radius,
+      },
+      (places: google.maps.places.PlaceResult[] | null, status: string) => {
+        if (status === "ZERO_RESULTS") {
+          resolve([]);
+          return;
+        }
+
+        if (status !== "OK" || !places) {
+          reject(new Error("places-search-unavailable"));
+          return;
+        }
+
+        const normalized = places.map(placeFromSearchResult);
+        const nearbyResults = normalized.filter(
+          (place) => place.location && getDistanceMeters(center, place.location) <= radius * 1.15,
+        );
+        const foodResults = nearbyResults.filter(isFoodRelatedPlace);
+
+        resolve(foodResults.slice(0, MAX_SEARCH_RESULTS));
+      },
+    );
+  });
+}
 
 export default function SavoryMap() {
   const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -31,6 +131,7 @@ export default function SavoryMap() {
   const userAccuracyCircleRef = useRef<google.maps.Circle | null>(null);
   const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesRef = useRef<google.maps.places.PlacesService | null>(null);
+  const searchRequestRef = useRef(0);
 
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -39,6 +140,7 @@ export default function SavoryMap() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<SavoryPlace | null>(null);
+  const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const controlWidth = Math.min(overlayWidth, 430);
 
@@ -166,39 +268,42 @@ export default function SavoryMap() {
   );
 
   const requestUserLocation = useCallback(
-    (shouldCenter = false) => {
+    (shouldCenter = false): Promise<google.maps.LatLngLiteral | null> => {
       if (!navigator.geolocation) {
         setMapError("Tu navegador no permite usar la ubicación.");
-        return;
+        return Promise.resolve(null);
       }
 
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => {
-          drawUserLocation(
-            {
+      return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) => {
+            const position = {
               lat: coords.latitude,
               lng: coords.longitude,
-            },
-            coords.accuracy,
-            shouldCenter,
-          );
-        },
-        () => {
-          setMapError("No se pudo obtener tu ubicación. Revisa los permisos del navegador.");
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 30000,
-          timeout: 10000,
-        },
-      );
+            };
+
+            setUserLocation(position);
+            drawUserLocation(position, coords.accuracy, shouldCenter);
+            resolve(position);
+          },
+          () => {
+            setMapError("No se pudo obtener tu ubicación. Revisa los permisos del navegador.");
+            resolve(null);
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 30000,
+            timeout: 10000,
+          },
+        );
+      });
     },
     [drawUserLocation],
   );
 
   useEffect(() => {
     if (mapReady) {
-      requestUserLocation(true);
+      void requestUserLocation(true);
     }
   }, [mapReady, requestUserLocation]);
 
@@ -245,10 +350,13 @@ export default function SavoryMap() {
     [selectedPlace],
   );
 
-  const runSearch = useCallback((input: string) => {
+  const runSearch = useCallback(async (input: string) => {
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
     const autocomplete = autocompleteRef.current;
+    const placesService = placesRef.current;
 
-    if (!autocomplete) {
+    if (!autocomplete && !placesService) {
       setSearchError("La búsqueda todavía se está cargando.");
       return;
     }
@@ -256,38 +364,47 @@ export default function SavoryMap() {
     setIsSearching(true);
     setSearchError(null);
 
-    autocomplete.getPlacePredictions(
-      {
-        input,
-        types: ["establishment"],
-      },
-      (
-        predictions: google.maps.places.AutocompletePrediction[] | null,
-        status: string,
-      ) => {
+    try {
+      let nextResults: SavoryPlace[] = [];
+      const searchCenter = userLocation ?? (await requestUserLocation(false));
+
+      if (searchRequestRef.current !== requestId) {
+        return;
+      }
+
+      if (placesService && searchCenter) {
+        for (const radius of SEARCH_RADII_METERS) {
+          const radiusResults = await searchPlacesNearUser(placesService, input, searchCenter, radius);
+
+          nextResults = dedupePlaces(radiusResults);
+
+          if (nextResults.length > 0) {
+            break;
+          }
+        }
+      }
+
+      if (nextResults.length === 0 && autocomplete) {
+        nextResults = dedupePlaces(await searchAutocomplete(autocomplete, input));
+      }
+
+      if (searchRequestRef.current !== requestId) {
+        return;
+      }
+
+      setResults(nextResults);
+      setSearchError(nextResults.length > 0 ? null : "No se encontraron sitios de comida o bebida.");
+    } catch {
+      if (searchRequestRef.current === requestId) {
+        setResults([]);
+        setSearchError("La búsqueda no está disponible ahora mismo.");
+      }
+    } finally {
+      if (searchRequestRef.current === requestId) {
         setIsSearching(false);
-
-        if (status === "ZERO_RESULTS") {
-          setResults([]);
-          setSearchError("No se encontraron sitios de comida o bebida.");
-          return;
-        }
-
-        if (status !== "OK" || !predictions) {
-          setResults([]);
-          setSearchError("La búsqueda no está disponible ahora mismo.");
-          return;
-        }
-
-        const normalized = predictions.map(normalizeAutocompletePrediction);
-        const foodResults = normalized.filter(isFoodRelatedPlace);
-        const nextResults = (foodResults.length > 0 ? foodResults : normalized).slice(0, 7);
-
-        setResults(nextResults);
-        setSearchError(nextResults.length > 0 ? null : "No se encontraron sitios de comida o bebida.");
-      },
-    );
-  }, []);
+      }
+    }
+  }, [requestUserLocation, userLocation]);
 
   useEffect(() => {
     const trimmedQuery = query.trim();
@@ -319,7 +436,7 @@ export default function SavoryMap() {
       setResults([]);
       setSearchError(null);
 
-      if (!detailsService) {
+      if (!detailsService || !place.placeId) {
         setSelectedPlace(place);
         focusPlaceOnMap(place);
         return;
@@ -373,7 +490,9 @@ export default function SavoryMap() {
             accessibilityLabel="Centrar mi ubicación"
             accessibilityRole="button"
             hitSlop={10}
-            onPress={() => requestUserLocation(true)}
+            onPress={() => {
+              void requestUserLocation(true);
+            }}
             style={({ pressed }) => [styles.locationButton, pressed && styles.locationButtonPressed]}
           >
             <SavoryIcon color={theme.colors.text} glyph={LocateIcon} size={21} strokeWidth={2.3} />
