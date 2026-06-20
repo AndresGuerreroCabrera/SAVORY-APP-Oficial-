@@ -9,7 +9,7 @@ La primera experiencia de la app es un mapa full-screen minimalista, con busqued
 La app tiene dos rutas principales:
 
 - `/`: pantalla principal con mapa, buscador, marcador de ubicacion del usuario y menu inferior.
-- `/profile`: pantalla de perfil, login, registro y cambio de contrasena con Supabase.
+- `/profile`: pantalla de perfil, login, registro, cambio de contrasena y conexion con amigos con Supabase.
 - `/list`: pantalla de lista con accesos a Deseados y Grupos, mas un desplegable de filtros.
 - `/wishlist`: pantalla de Deseados con el mismo desplegable de filtros.
 - `/groups`: pantalla de Grupos, actualmente vacia.
@@ -20,6 +20,7 @@ Tambien incluye:
 - Google Places para busqueda de sitios.
 - Supabase Auth para registro, login, confirmacion de correo y cambio de contrasena.
 - Tabla publica `profiles` propuesta mediante migracion SQL con RLS.
+- Tabla `friendships` propuesta mediante migracion SQL con RLS para solicitudes y amigos.
 - Vercel Analytics y Speed Insights integrados solo en web.
 - Separacion `.web.tsx` / `.native.tsx` para preparar compatibilidad movil.
 
@@ -138,6 +139,7 @@ La app usa Supabase para autenticacion:
 - Login con email y contrasena.
 - Sesion persistente.
 - Cambio de contrasena.
+- Busqueda de usuarios, solicitudes de amistad, bandeja de entrada y lista de amigos.
 
 El cliente esta en:
 
@@ -196,6 +198,16 @@ Tambien crea:
 - politicas para que cada usuario cree/edite solo su propio perfil
 - trigger `handle_new_user_profile` para crear perfil automaticamente tras registro
 - backfill para usuarios ya existentes en `auth.users`
+
+### Amistades
+
+La conexion social usa:
+
+```txt
+supabase/migrations/20260620133000_create_friendships.sql
+```
+
+Esta migracion crea `public.friendships` con estados `pending` y `accepted`, RLS para que solo los participantes lean o borren relaciones, y una politica para que solo el receptor pueda aceptar una solicitud. Tambien habilita realtime en la tabla para refrescar bandeja, contador de solicitudes y lista de amigos.
 
 ### Como Aplicar La Migracion
 

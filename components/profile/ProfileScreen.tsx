@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import { ArrowLeft, LockKeyhole, LogOut, Mail, ShieldCheck, UserRound } from "lucide-react-native";
+import { ArrowLeft, ChevronDown, LockKeyhole, LogOut, Mail, ShieldCheck, UserRound } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,6 +29,20 @@ type UserProfile = {
   updated_at: string;
   username: string;
 };
+type SocialProfile = Pick<UserProfile, "avatar_url" | "display_name" | "id" | "username">;
+type FriendshipStatus = "none" | "pending_sent" | "pending_received" | "friends";
+type UserSearchResult = SocialProfile & {
+  friendshipId?: string;
+  friendshipStatus: FriendshipStatus;
+};
+type FriendshipRow = {
+  id: string;
+  receiver: SocialProfile | null;
+  receiver_id: string;
+  requester: SocialProfile | null;
+  requester_id: string;
+  status: "pending" | "accepted";
+};
 
 const UserIcon = UserRound as SavoryIconGlyph;
 const MailIcon = Mail as SavoryIconGlyph;
@@ -36,6 +50,7 @@ const LockIcon = LockKeyhole as SavoryIconGlyph;
 const ShieldIcon = ShieldCheck as SavoryIconGlyph;
 const LogoutIcon = LogOut as SavoryIconGlyph;
 const BackIcon = ArrowLeft as SavoryIconGlyph;
+const ChevronIcon = ChevronDown as SavoryIconGlyph;
 
 const webInputReset: TextStyle & {
   boxShadow?: string;
@@ -65,6 +80,7 @@ export function ProfileScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +180,11 @@ export function ProfileScreen() {
       active = false;
     };
   }, [session]);
+
+  useEffect(() => {
+    setProfileMenuOpen(false);
+    setShowPasswordChange(false);
+  }, [session?.user.id]);
 
   const resetFeedback = useCallback(() => {
     setError(null);
@@ -323,6 +344,7 @@ export function ProfileScreen() {
     setSubmitting(true);
     await supabase.auth.signOut();
     setSubmitting(false);
+    setProfileMenuOpen(false);
     setMessage("Sesión cerrada.");
   }, [resetFeedback]);
 
@@ -352,15 +374,28 @@ export function ProfileScreen() {
               </View>
             ) : session ? (
               <View style={styles.sectionGap}>
-                <View style={styles.identityRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: profileMenuOpen }}
+                  onPress={() => setProfileMenuOpen((isOpen) => !isOpen)}
+                  style={({ pressed }) => [styles.profileDisclosure, pressed && styles.buttonPressed]}
+                >
                   <View style={styles.avatar}>
                     <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={24} strokeWidth={2.3} />
                   </View>
                   <View style={styles.identityText}>
                     <Text style={styles.nameText}>{profileName}</Text>
-                    <Text style={styles.emailText}>{session.user.email}</Text>
                   </View>
-                </View>
+                  <View style={[styles.chevron, profileMenuOpen && styles.chevronOpen]}>
+                    <SavoryIcon color={theme.colors.text} glyph={ChevronIcon} size={20} strokeWidth={2.4} />
+                  </View>
+                </Pressable>
+
+                {profileMenuOpen ? (
+                  <View style={styles.profileDropdown}>
+                    <Text numberOfLines={1} style={styles.emailText}>
+                      {session.user.email}
+                    </Text>
 
                 {loadingProfile ? (
                   <View style={styles.loadingRow}>
@@ -406,6 +441,8 @@ export function ProfileScreen() {
                   <SavoryIcon color={theme.colors.text} glyph={LogoutIcon} size={18} strokeWidth={2.2} />
                   <Text style={styles.secondaryButtonText}>Cerrar sesión</Text>
                 </Pressable>
+                  </View>
+                ) : null}
               </View>
             ) : (
               <View style={styles.sectionGap}>
@@ -483,6 +520,10 @@ export function ProfileScreen() {
               </View>
             )}
           </View>
+
+          {isSupabaseConfigured && session ? (
+            <FriendsConnectorSection contentWidth={contentWidth} session={session} />
+          ) : null}
         </ScrollView>
       </SafeAreaView>
 
@@ -630,6 +671,520 @@ function StatusBlock({ icon, text }: StatusBlockProps) {
   );
 }
 
+type FriendsConnectorSectionProps = {
+  contentWidth: number;
+  session: Session;
+};
+
+function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSectionProps) {
+  const currentUserId = session.user.id;
+  const [friendships, setFriendships] = useState<FriendshipRow[]>([]);
+  const [friends, setFriends] = useState<SocialProfile[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<FriendshipRow[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
+  const [loadingSocial, setLoadingSocial] = useState(false);
+  const [searchingUsers, setSearchingUsers] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [pendingFriendActionId, setPendingFriendActionId] = useState<string | null>(null);
+  const [socialMessage, setSocialMessage] = useState<string | null>(null);
+  const [socialError, setSocialError] = useState<string | null>(null);
+
+  const loadFriendships = useCallback(async () => {
+    if (!supabase) {
+      return;
+    }
+
+    setLoadingSocial(true);
+    const { data, error: friendshipsError } = await supabase
+      .from("friendships")
+      .select(
+        "id, requester_id, receiver_id, status, requester:profiles!friendships_requester_id_fkey(id, username, display_name, avatar_url), receiver:profiles!friendships_receiver_id_fkey(id, username, display_name, avatar_url)",
+      )
+      .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
+
+    setLoadingSocial(false);
+
+    if (friendshipsError) {
+      setSocialError("No se pudieron cargar tus amistades. Revisa que la migración de friendships esté aplicada.");
+      return;
+    }
+
+    const nextFriendships = (data ?? [])
+      .map(normalizeFriendshipRow)
+      .filter((row): row is FriendshipRow => Boolean(row));
+
+    setFriendships(nextFriendships);
+    setIncomingRequests(
+      nextFriendships.filter((row) => row.status === "pending" && row.receiver_id === currentUserId),
+    );
+    setFriends(
+      nextFriendships
+        .filter((row) => row.status === "accepted")
+        .map((row) => (row.requester_id === currentUserId ? row.receiver : row.requester))
+        .filter((profile): profile is SocialProfile => Boolean(profile)),
+    );
+  }, [currentUserId]);
+
+  useEffect(() => {
+    void loadFriendships();
+  }, [loadFriendships]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    const client = supabase;
+    const channel = client
+      .channel(`friendships-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "friendships", filter: `requester_id=eq.${currentUserId}` },
+        () => {
+          void loadFriendships();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "friendships", filter: `receiver_id=eq.${currentUserId}` },
+        () => {
+          void loadFriendships();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [currentUserId, loadFriendships]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    const client = supabase;
+    const normalizedQuery = normalizeFriendSearch(searchText);
+
+    if (normalizedQuery.length < 2) {
+      setSearchResults([]);
+      setSearchingUsers(false);
+      return;
+    }
+
+    let active = true;
+    setSearchingUsers(true);
+
+    const timeout = setTimeout(async () => {
+      const { data, error: searchError } = await client
+        .from("profiles")
+        .select("id, username, display_name, avatar_url")
+        .ilike("username", `${normalizedQuery}%`)
+        .neq("id", currentUserId)
+        .order("username", { ascending: true })
+        .limit(8);
+
+      if (!active) {
+        return;
+      }
+
+      setSearchingUsers(false);
+
+      if (searchError) {
+        setSearchResults([]);
+        setSocialError("No se pudo buscar usuarios ahora mismo.");
+        return;
+      }
+
+      const nextResults = (data ?? [])
+        .map(normalizeSocialProfile)
+        .filter((profile): profile is SocialProfile => Boolean(profile))
+        .map((profile) => {
+          const relationship = getFriendshipStatus(currentUserId, profile.id, friendships);
+
+          return {
+            ...profile,
+            friendshipId: relationship.friendshipId,
+            friendshipStatus: relationship.status,
+          };
+        });
+
+      setSearchResults(nextResults);
+    }, 240);
+
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  }, [currentUserId, friendships, searchText]);
+
+  const resetSocialFeedback = useCallback(() => {
+    setSocialError(null);
+    setSocialMessage(null);
+  }, []);
+
+  const handleRequestFriend = useCallback(
+    async (target: SocialProfile) => {
+      if (!supabase) {
+        return;
+      }
+
+      resetSocialFeedback();
+      setPendingFriendActionId(target.id);
+
+      const { error: requestError } = await supabase.from("friendships").insert({
+        requester_id: currentUserId,
+        receiver_id: target.id,
+        status: "pending",
+      });
+
+      setPendingFriendActionId(null);
+
+      if (requestError) {
+        setSocialError("No se pudo enviar la solicitud. Puede que ya exista una relación con ese usuario.");
+        return;
+      }
+
+      setSocialMessage("Solicitud enviada.");
+      await loadFriendships();
+    },
+    [currentUserId, loadFriendships, resetSocialFeedback],
+  );
+
+  const handleAcceptRequest = useCallback(
+    async (friendshipId: string) => {
+      if (!supabase) {
+        return;
+      }
+
+      resetSocialFeedback();
+      setPendingFriendActionId(friendshipId);
+
+      const { error: acceptError } = await supabase
+        .from("friendships")
+        .update({ status: "accepted" })
+        .eq("id", friendshipId)
+        .eq("receiver_id", currentUserId);
+
+      setPendingFriendActionId(null);
+
+      if (acceptError) {
+        setSocialError("No se pudo aceptar la solicitud.");
+        return;
+      }
+
+      setSocialMessage("Ahora sois amigos.");
+      await loadFriendships();
+    },
+    [currentUserId, loadFriendships, resetSocialFeedback],
+  );
+
+  const handleRejectRequest = useCallback(
+    async (friendshipId: string) => {
+      if (!supabase) {
+        return;
+      }
+
+      resetSocialFeedback();
+      setPendingFriendActionId(friendshipId);
+
+      const { error: rejectError } = await supabase
+        .from("friendships")
+        .delete()
+        .eq("id", friendshipId)
+        .eq("receiver_id", currentUserId);
+
+      setPendingFriendActionId(null);
+
+      if (rejectError) {
+        setSocialError("No se pudo rechazar la solicitud.");
+        return;
+      }
+
+      await loadFriendships();
+    },
+    [currentUserId, loadFriendships, resetSocialFeedback],
+  );
+
+  const hasSearchQuery = normalizeFriendSearch(searchText).length >= 2;
+
+  return (
+    <View style={[styles.panel, styles.friendsPanel, { width: contentWidth }]}>
+      <Text style={styles.sectionTitle}>Conectar con amigos</Text>
+
+      <View style={styles.friendSearchRow}>
+        <View style={[styles.inputShell, styles.friendSearchInput]}>
+          <SavoryIcon color={theme.colors.muted} glyph={UserIcon} size={18} strokeWidth={2.1} />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setSearchText}
+            placeholder="Buscar nombre de usuario"
+            placeholderTextColor={theme.colors.faint}
+            selectionColor={theme.colors.text}
+            style={[styles.input, inputPlatformStyle]}
+            value={searchText}
+          />
+        </View>
+
+        <Pressable
+          accessibilityLabel="Abrir bandeja de solicitudes"
+          accessibilityRole="button"
+          accessibilityState={{ expanded: inboxOpen }}
+          onPress={() => setInboxOpen((isOpen) => !isOpen)}
+          style={({ pressed }) => [styles.inboxButton, inboxOpen && styles.inboxButtonActive, pressed && styles.buttonPressed]}
+        >
+          <SavoryIcon color={inboxOpen ? theme.colors.coral : theme.colors.text} glyph={MailIcon} size={22} strokeWidth={2.2} />
+          {incomingRequests.length > 0 ? (
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationBadgeText}>{incomingRequests.length > 9 ? "9+" : incomingRequests.length}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
+
+      {inboxOpen ? (
+        <View style={styles.inboxArea}>
+          {incomingRequests.length > 0 ? (
+            incomingRequests.map((request) => {
+              const requester = request.requester;
+
+              if (!requester) {
+                return null;
+              }
+
+              return (
+                <View key={request.id} style={styles.socialRow}>
+                  <UserChip profile={requester} />
+                  <View style={styles.requestActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={pendingFriendActionId === request.id}
+                      onPress={() => handleAcceptRequest(request.id)}
+                      style={({ pressed }) => [
+                        styles.tinyPrimaryButton,
+                        pendingFriendActionId === request.id && styles.buttonDisabled,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={styles.tinyPrimaryButtonText}>Aceptar</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={pendingFriendActionId === request.id}
+                      onPress={() => handleRejectRequest(request.id)}
+                      style={({ pressed }) => [
+                        styles.tinySecondaryButton,
+                        pendingFriendActionId === request.id && styles.buttonDisabled,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={styles.tinySecondaryButtonText}>Rechazar</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <Text style={styles.emptyText}>No tienes solicitudes pendientes.</Text>
+          )}
+        </View>
+      ) : null}
+
+      {hasSearchQuery ? (
+        <View style={styles.searchResultsArea}>
+          {searchingUsers ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={theme.colors.coral} />
+              <Text style={styles.helperText}>Buscando usuarios</Text>
+            </View>
+          ) : searchResults.length > 0 ? (
+            <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={styles.userResultsScroll}>
+              {searchResults.map((result) => {
+                const isDisabled =
+                  result.friendshipStatus === "friends" ||
+                  result.friendshipStatus === "pending_sent" ||
+                  pendingFriendActionId === result.id;
+                const isResponder = result.friendshipStatus === "pending_received";
+
+                return (
+                  <View key={result.id} style={styles.socialRow}>
+                    <UserChip profile={result} />
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={isDisabled}
+                      onPress={() => {
+                        if (isResponder) {
+                          setInboxOpen(true);
+                          return;
+                        }
+
+                        void handleRequestFriend(result);
+                      }}
+                      style={({ pressed }) => [
+                        styles.friendActionButton,
+                        (isDisabled || isResponder) && styles.friendActionButtonMuted,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={[styles.friendActionButtonText, (isDisabled || isResponder) && styles.friendActionButtonTextMuted]}>
+                        {getFriendshipButtonLabel(result.friendshipStatus)}
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <Text style={styles.emptyText}>No se encontraron usuarios.</Text>
+          )}
+        </View>
+      ) : null}
+
+      {socialMessage ? <Text style={styles.successText}>{socialMessage}</Text> : null}
+      {socialError ? <Text style={styles.errorText}>{socialError}</Text> : null}
+
+      <View style={styles.friendsListHeader}>
+        <Text style={styles.sectionSubtitle}>Tus amigos</Text>
+      </View>
+
+      {loadingSocial ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color={theme.colors.coral} />
+          <Text style={styles.helperText}>Cargando amigos</Text>
+        </View>
+      ) : friends.length > 0 ? (
+        <ScrollView nestedScrollEnabled style={styles.friendsScroll}>
+          {friends.map((friend) => (
+            <View key={friend.id} style={styles.friendRow}>
+              <UserChip profile={friend} />
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        <Text style={styles.emptyText}>Todavía no tienes amigos añadidos.</Text>
+      )}
+    </View>
+  );
+}
+
+type UserChipProps = {
+  profile: SocialProfile;
+};
+
+function UserChip({ profile }: UserChipProps) {
+  return (
+    <View style={styles.userChip}>
+      <View style={styles.userMiniAvatar}>
+        <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={18} strokeWidth={2.2} />
+      </View>
+      <Text numberOfLines={1} style={styles.userChipName}>
+        {profile.username}
+      </Text>
+    </View>
+  );
+}
+
+function normalizeSocialProfile(value: unknown): SocialProfile | null {
+  const profile = Array.isArray(value) ? value[0] : value;
+
+  if (!profile || typeof profile !== "object") {
+    return null;
+  }
+
+  const record = profile as Partial<SocialProfile>;
+
+  if (typeof record.id !== "string" || typeof record.username !== "string") {
+    return null;
+  }
+
+  return {
+    avatar_url: typeof record.avatar_url === "string" ? record.avatar_url : null,
+    display_name: typeof record.display_name === "string" ? record.display_name : null,
+    id: record.id,
+    username: record.username,
+  };
+}
+
+function normalizeFriendshipRow(value: unknown): FriendshipRow | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Partial<FriendshipRow> & {
+    receiver?: unknown;
+    requester?: unknown;
+  };
+
+  if (
+    typeof record.id !== "string" ||
+    typeof record.requester_id !== "string" ||
+    typeof record.receiver_id !== "string" ||
+    (record.status !== "pending" && record.status !== "accepted")
+  ) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    receiver: normalizeSocialProfile(record.receiver),
+    receiver_id: record.receiver_id,
+    requester: normalizeSocialProfile(record.requester),
+    requester_id: record.requester_id,
+    status: record.status,
+  };
+}
+
+function getFriendshipStatus(
+  currentUserId: string,
+  targetUserId: string,
+  friendships: FriendshipRow[],
+): { friendshipId?: string; status: FriendshipStatus } {
+  const friendship = friendships.find(
+    (row) =>
+      (row.requester_id === currentUserId && row.receiver_id === targetUserId) ||
+      (row.receiver_id === currentUserId && row.requester_id === targetUserId),
+  );
+
+  if (!friendship) {
+    return { status: "none" };
+  }
+
+  if (friendship.status === "accepted") {
+    return { friendshipId: friendship.id, status: "friends" };
+  }
+
+  return {
+    friendshipId: friendship.id,
+    status: friendship.requester_id === currentUserId ? "pending_sent" : "pending_received",
+  };
+}
+
+function getFriendshipButtonLabel(status: FriendshipStatus) {
+  if (status === "friends") {
+    return "Amigos";
+  }
+
+  if (status === "pending_sent") {
+    return "Enviada";
+  }
+
+  if (status === "pending_received") {
+    return "Responder";
+  }
+
+  return "Solicitar";
+}
+
+function normalizeFriendSearch(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 32);
+}
+
 function getDisplayName(session: Session | null, profile: UserProfile | null) {
   if (profile?.display_name?.trim()) {
     return profile.display_name.trim();
@@ -731,8 +1286,186 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 18,
   },
+  friendsPanel: {
+    gap: 14,
+    marginTop: 14,
+  },
   sectionGap: {
     gap: 14,
+  },
+  sectionTitle: {
+    color: theme.colors.text,
+    fontSize: 20,
+    fontWeight: "800",
+    lineHeight: 25,
+  },
+  sectionSubtitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  friendSearchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  friendSearchInput: {
+    flex: 1,
+  },
+  inboxButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    height: 56,
+    justifyContent: "center",
+    position: "relative",
+    width: 56,
+  },
+  inboxButtonActive: {
+    backgroundColor: theme.colors.coralSoft,
+    borderColor: "#FFDAD5",
+  },
+  notificationBadge: {
+    alignItems: "center",
+    backgroundColor: theme.colors.danger,
+    borderColor: theme.colors.white,
+    borderRadius: theme.radius.pill,
+    borderWidth: 2,
+    height: 20,
+    justifyContent: "center",
+    minWidth: 20,
+    paddingHorizontal: 4,
+    position: "absolute",
+    right: -4,
+    top: -5,
+  },
+  notificationBadgeText: {
+    color: theme.colors.white,
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 14,
+  },
+  inboxArea: {
+    borderColor: theme.colors.border,
+    borderTopWidth: 1,
+    gap: 10,
+    paddingTop: 12,
+  },
+  searchResultsArea: {
+    borderColor: theme.colors.border,
+    borderTopWidth: 1,
+    paddingTop: 12,
+  },
+  userResultsScroll: {
+    maxHeight: 232,
+  },
+  socialRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 58,
+    paddingVertical: 6,
+  },
+  requestActions: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  userChip: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 10,
+    minWidth: 0,
+  },
+  userMiniAvatar: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderRadius: theme.radius.pill,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  userChipName: {
+    color: theme.colors.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 18,
+    minWidth: 0,
+  },
+  friendActionButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coral,
+    borderRadius: theme.radius.pill,
+    height: 36,
+    justifyContent: "center",
+    minWidth: 92,
+    paddingHorizontal: 13,
+  },
+  friendActionButtonMuted: {
+    backgroundColor: theme.colors.surfaceSoft,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+  },
+  friendActionButtonText: {
+    color: theme.colors.white,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+  },
+  friendActionButtonTextMuted: {
+    color: theme.colors.textSoft,
+  },
+  tinyPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coral,
+    borderRadius: theme.radius.pill,
+    height: 34,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  tinyPrimaryButtonText: {
+    color: theme.colors.white,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+  },
+  tinySecondaryButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  tinySecondaryButtonText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+  },
+  friendsListHeader: {
+    borderColor: theme.colors.border,
+    borderTopWidth: 1,
+    paddingTop: 12,
+  },
+  friendsScroll: {
+    maxHeight: 210,
+  },
+  friendRow: {
+    minHeight: 52,
+    paddingVertical: 7,
+  },
+  emptyText: {
+    color: theme.colors.muted,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
   },
   segmented: {
     backgroundColor: theme.colors.surfaceSoft,
@@ -859,6 +1592,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     lineHeight: 18,
+  },
+  profileDisclosure: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 68,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  profileDropdown: {
+    gap: 14,
+  },
+  chevron: {
+    alignItems: "center",
+    borderRadius: theme.radius.pill,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+  },
+  chevronOpen: {
+    transform: [{ rotate: "180deg" }],
   },
   identityRow: {
     alignItems: "center",
