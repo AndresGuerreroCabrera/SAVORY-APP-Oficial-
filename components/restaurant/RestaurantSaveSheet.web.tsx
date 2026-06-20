@@ -37,6 +37,12 @@ const BackIcon = ChevronLeft as SavoryIconGlyph;
 
 const RATING_VALUES = Array.from({ length: 21 }, (_, index) => index / 2);
 const MAX_PHOTO_BYTES = 700000;
+const STEP_MENU_ITEMS: Array<{ label: string; value: VisitedStep }> = [
+  { label: "Comida", value: "food" },
+  { label: "Local", value: "local" },
+  { label: "Servicio", value: "service" },
+  { label: "Visibilidad", value: "visibility" },
+];
 
 export function RestaurantSaveSheet({
   historyMode = "append",
@@ -160,6 +166,7 @@ export function RestaurantSaveSheet({
   };
 
   const isVisited = status === "visited";
+  const isEditingVisited = Boolean(initialRecord && isVisited);
 
   return (
     <View style={styles.overlay}>
@@ -223,6 +230,21 @@ export function RestaurantSaveSheet({
         )}
 
         {isVisited ? (
+          <>
+            {isEditingVisited ? (
+              <View style={styles.editQuickControls}>
+                <StepMenu activeStep={step} onSelect={setStep} />
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={saving}
+                  onPress={saveCurrentRestaurant}
+                  style={[styles.quickSaveButton, saving && styles.disabledButton]}
+                >
+                  {saving ? <ActivityIndicator color={theme.colors.white} /> : <Text style={styles.quickSaveButtonText}>Guardar cambios</Text>}
+                </Pressable>
+              </View>
+            ) : null}
+
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={styles.visitedScroll}>
             {step === "food" ? (
               <View style={styles.stepArea}>
@@ -320,6 +342,7 @@ export function RestaurantSaveSheet({
               </View>
             ) : null}
           </ScrollView>
+          </>
         ) : (
           <Pressable
             accessibilityRole="button"
@@ -365,6 +388,35 @@ function SegmentedChoice<T extends string>({ leftLabel, onChange, rightLabel, va
       >
         <Text style={[styles.segmentText, value === rightValue && styles.segmentTextActive]}>{rightLabel}</Text>
       </Pressable>
+    </View>
+  );
+}
+
+type StepMenuProps = {
+  activeStep: VisitedStep;
+  onSelect: (step: VisitedStep) => void;
+};
+
+function StepMenu({ activeStep, onSelect }: StepMenuProps) {
+  return (
+    <View style={styles.stepMenu}>
+      {STEP_MENU_ITEMS.map((item) => {
+        const isActive = activeStep === item.value;
+
+        return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+            key={item.value}
+            onPress={() => onSelect(item.value)}
+            style={({ pressed }) => [styles.stepMenuButton, isActive && styles.stepMenuButtonActive, pressed && styles.buttonPressed]}
+          >
+            <Text numberOfLines={1} style={[styles.stepMenuText, isActive && styles.stepMenuTextActive]}>
+              {item.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -670,6 +722,57 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: theme.colors.white,
   },
+  editQuickControls: {
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    gap: 10,
+    padding: 10,
+  },
+  stepMenu: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  stepMenuButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceSoft,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    flexGrow: 1,
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  stepMenuButtonActive: {
+    backgroundColor: theme.colors.coralSoft,
+    borderColor: theme.colors.coral,
+  },
+  stepMenuText: {
+    color: theme.colors.textSoft,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+  },
+  stepMenuTextActive: {
+    color: theme.colors.text,
+  },
+  quickSaveButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.text,
+    borderRadius: theme.radius.pill,
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  quickSaveButtonText: {
+    color: theme.colors.white,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 18,
+  },
   visitedScroll: {
     maxHeight: 470,
   },
@@ -861,6 +964,10 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.62,
+  },
+  buttonPressed: {
+    opacity: 0.74,
+    transform: [{ scale: 0.99 }],
   },
   successText: {
     color: "#167245",

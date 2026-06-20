@@ -411,7 +411,7 @@ function visitHistoryArray(value: unknown) {
   }
 
   return value
-    .map((item) => {
+    .map((item): RestaurantVisitSnapshot => {
       const visit = item as Partial<RestaurantVisitSnapshot>;
 
       return {
