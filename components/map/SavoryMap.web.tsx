@@ -6,6 +6,7 @@ import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { BottomNav } from "../navigation/BottomNav";
 import { PlacesSearch } from "../search/PlacesSearch";
+import { RestaurantSaveSheet } from "../restaurant/RestaurantSaveSheet";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { SAVORY_MAP_STYLE } from "../../constants/mapStyle";
 import { theme } from "../../constants/theme";
@@ -15,6 +16,9 @@ import {
   placeFromSearchResult,
   placeFromDetails,
 } from "../../services/googlePlaces";
+import { getGoogleMapsUrl } from "../../services/restaurantLinks";
+import { getCurrentUserSavedRestaurantPins } from "../../services/savedRestaurants";
+import type { SavedRestaurantRecord } from "../../types/restaurant";
 import type { SavoryPlace } from "../../types/place";
 
 const DEFAULT_CENTER = { lat: 40.4168, lng: -3.7038 };
@@ -23,6 +27,7 @@ const MIN_SEARCH_LENGTH = 2;
 const SEARCH_RADII_METERS = [1500, 5000, 15000, 50000] as const;
 const MAX_SEARCH_RESULTS = 12;
 const LocateIcon = LocateFixed as SavoryIconGlyph;
+type SavedPinFilter = "all" | "visited" | "want_to_go";
 
 function dedupePlaces(places: SavoryPlace[]) {
   const seen = new Set<string>();
@@ -121,12 +126,43 @@ function searchPlacesNearUser(
   });
 }
 
+function getSavedPinColor(restaurant: SavedRestaurantRecord) {
+  if (restaurant.status === "want_to_go") {
+    return "#7C3AED";
+  }
+
+  return restaurant.visibility === "public" ? "#1A73E8" : "#D93025";
+}
+
+function createSavedPinIcon(color: string): google.maps.Symbol {
+  return {
+    anchor: new google.maps.Point(0, -1),
+    fillColor: color,
+    fillOpacity: 1,
+    path: "M0 0 C-2.7-4.2-7-8.7-7-13.5 A7 7 0 1 1 7-13.5 C7-8.7 2.7-4.2 0 0 Z",
+    scale: 1.35,
+    strokeColor: theme.colors.white,
+    strokeWeight: 2,
+  };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export default function SavoryMap() {
   const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
   const viewportWidth = useViewportWidth();
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
+  const savedMarkerRefs = useRef<google.maps.Marker[]>([]);
+  const savedInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
   const userAccuracyCircleRef = useRef<google.maps.Circle | null>(null);
   const autocompleteRef = useRef<google.maps.places.AutocompleteService | null>(null);
@@ -140,6 +176,9 @@ export default function SavoryMap() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<SavoryPlace | null>(null);
+  const [activeSheetPlace, setActiveSheetPlace] = useState<SavoryPlace | null>(null);
+  const [savedPinFilter, setSavedPinFilter] = useState<SavedPinFilter>("all");
+  const [savedPinsVersion, setSavedPinsVersion] = useState(0);
   const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const controlWidth = Math.min(overlayWidth, 430);
@@ -213,10 +252,122 @@ export default function SavoryMap() {
     return () => {
       cancelled = true;
       markerRef.current?.setMap(null);
+      savedMarkerRefs.current.forEach((savedMarker) => savedMarker.setMap(null));
       userMarkerRef.current?.setMap(null);
       userAccuracyCircleRef.current?.setMap(null);
     };
   }, [apiKey]);
+
+  const drawSavedRestaurantPins = useCallback((savedRestaurants: SavedRestaurantRecord[]) => {
+    const map = mapRef.current;
+
+    if (!map) {
+      return;
+    }
+
+    savedMarkerRefs.current.forEach((savedMarker) => savedMarker.setMap(null));
+    savedMarkerRefs.current = [];
+
+    if (!savedInfoWindowRef.current) {
+      const infoWindowOptions: google.maps.InfoWindowOptions & { headerDisabled?: boolean } = {
+        headerDisabled: true,
+        maxWidth: 240,
+        pixelOffset: new google.maps.Size(0, -8),
+      };
+
+      savedInfoWindowRef.current = new google.maps.InfoWindow(infoWindowOptions);
+    }
+
+    const visibleRestaurants = savedRestaurants.filter(
+      (restaurant) => savedPinFilter === "all" || restaurant.status === savedPinFilter,
+    );
+
+    for (const restaurant of visibleRestaurants) {
+      if (restaurant.location_lat == null || restaurant.location_lng == null) {
+        continue;
+      }
+
+      const position = {
+        lat: restaurant.location_lat,
+        lng: restaurant.location_lng,
+      };
+      const marker = new google.maps.Marker({
+        icon: createSavedPinIcon(getSavedPinColor(restaurant)),
+        map,
+        optimized: true,
+        position,
+        title: restaurant.name,
+      });
+
+      marker.addListener("click", () => {
+        const mapsUrl = getGoogleMapsUrl({
+          address: restaurant.address,
+          lat: restaurant.location_lat,
+          lng: restaurant.location_lng,
+          name: restaurant.name,
+          placeId: restaurant.google_place_id,
+        });
+        const content = `
+          <div style="
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 210px;
+            padding: 2px 0;
+          ">
+            <strong style="
+              color: #111214;
+              display: block;
+              font-size: 13px;
+              font-weight: 850;
+              line-height: 17px;
+              margin-bottom: 7px;
+              max-width: 190px;
+            ">${escapeHtml(restaurant.name)}</strong>
+            ${
+              restaurant.address
+                ? `<a href="${mapsUrl}" target="_blank" rel="noreferrer" style="
+                    color: #FF6B5F;
+                    display: inline-block;
+                    font-size: 12px;
+                    font-weight: 800;
+                    line-height: 16px;
+                    max-width: 190px;
+                    text-decoration: underline;
+                  ">${escapeHtml(restaurant.address)}</a>`
+                : ""
+            }
+          </div>
+        `;
+
+        savedInfoWindowRef.current?.setContent(content);
+        savedInfoWindowRef.current?.open({ anchor: marker, map });
+      });
+
+      savedMarkerRefs.current.push(marker);
+    }
+  }, [savedPinFilter]);
+
+  useEffect(() => {
+    if (!mapReady) {
+      return;
+    }
+
+    let active = true;
+
+    async function loadSavedPins() {
+      const { data } = await getCurrentUserSavedRestaurantPins();
+
+      if (active) {
+        drawSavedRestaurantPins(data);
+      }
+    }
+
+    void loadSavedPins();
+
+    return () => {
+      active = false;
+    };
+  }, [drawSavedRestaurantPins, mapReady, savedPinsVersion]);
 
   const drawUserLocation = useCallback(
     (position: google.maps.LatLngLiteral, accuracy?: number, shouldCenter = false) => {
@@ -438,6 +589,7 @@ export default function SavoryMap() {
 
       if (!detailsService || !place.placeId) {
         setSelectedPlace(place);
+        setActiveSheetPlace(place);
         focusPlaceOnMap(place);
         return;
       }
@@ -445,7 +597,16 @@ export default function SavoryMap() {
       setIsSearching(true);
       detailsService.getDetails(
         {
-          fields: ["formatted_address", "geometry", "name", "place_id", "types"],
+          fields: [
+            "formatted_address",
+            "formatted_phone_number",
+            "geometry",
+            "international_phone_number",
+            "name",
+            "place_id",
+            "types",
+            "website",
+          ],
           placeId: place.placeId,
         },
         (
@@ -456,6 +617,7 @@ export default function SavoryMap() {
 
           if (status !== "OK" || !details) {
             setSelectedPlace(place);
+            setActiveSheetPlace(place);
             focusPlaceOnMap(place);
             return;
           }
@@ -463,6 +625,7 @@ export default function SavoryMap() {
           const detailedPlace = placeFromDetails(details, place);
 
           setSelectedPlace(detailedPlace);
+          setActiveSheetPlace(detailedPlace);
           focusPlaceOnMap(detailedPlace);
         },
       );
@@ -482,6 +645,22 @@ export default function SavoryMap() {
 
       <View pointerEvents="none" style={styles.brandOverlay}>
         <Text style={styles.brand}>Savory</Text>
+      </View>
+
+      <View pointerEvents="box-none" style={styles.pinFilterOverlay}>
+        <View style={styles.pinFilter}>
+          <PinFilterButton active={savedPinFilter === "all"} label="Todos" onPress={() => setSavedPinFilter("all")} />
+          <PinFilterButton
+            active={savedPinFilter === "visited"}
+            label="Visitados"
+            onPress={() => setSavedPinFilter("visited")}
+          />
+          <PinFilterButton
+            active={savedPinFilter === "want_to_go"}
+            label="Deseados"
+            onPress={() => setSavedPinFilter("want_to_go")}
+          />
+        </View>
       </View>
 
       <View pointerEvents="box-none" style={styles.bottomOverlay}>
@@ -509,6 +688,15 @@ export default function SavoryMap() {
         />
         <BottomNav width={controlWidth} />
       </View>
+
+      {activeSheetPlace ? (
+        <RestaurantSaveSheet
+          onClose={() => setActiveSheetPlace(null)}
+          onSaved={() => setSavedPinsVersion((version) => version + 1)}
+          place={activeSheetPlace}
+          width={Math.min(overlayWidth, 560)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -526,6 +714,25 @@ function useViewportWidth() {
   }, []);
 
   return width;
+}
+
+type PinFilterButtonProps = {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+};
+
+function PinFilterButton({ active, label, onPress }: PinFilterButtonProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.pinFilterButton, active && styles.pinFilterButtonActive, pressed && styles.pinFilterButtonPressed]}
+    >
+      <Text style={[styles.pinFilterButtonText, active && styles.pinFilterButtonTextActive]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 const mapCanvasStyle: CSSProperties = {
@@ -558,6 +765,52 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 42,
     textAlign: "center",
+  },
+  pinFilterOverlay: {
+    alignItems: "center",
+    left: 0,
+    paddingTop: 66,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  pinFilter: {
+    backgroundColor: theme.colors.surfaceGlass,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minWidth: 306,
+    padding: 4,
+    shadowColor: "#111214",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  pinFilterButton: {
+    alignItems: "center",
+    borderRadius: theme.radius.pill,
+    flex: 1,
+    height: 34,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  pinFilterButtonActive: {
+    backgroundColor: theme.colors.coral,
+  },
+  pinFilterButtonPressed: {
+    opacity: 0.72,
+  },
+  pinFilterButtonText: {
+    color: theme.colors.textSoft,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+  },
+  pinFilterButtonTextActive: {
+    color: theme.colors.white,
   },
   bottomOverlay: {
     alignItems: "center",

@@ -9,6 +9,8 @@ export type SavoryPlace = {
   name: string;
   address?: string;
   category?: string;
+  phone?: string;
   types: string[];
+  website?: string;
   location?: PlaceLocation;
 };

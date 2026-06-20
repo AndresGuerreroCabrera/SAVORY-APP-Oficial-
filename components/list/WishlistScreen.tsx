@@ -1,16 +1,22 @@
 import { StyleSheet, View } from "react-native";
+import { useState } from "react";
 
-import { FiltersDropdown } from "./FiltersDropdown";
+import type { RestaurantFilters } from "../../types/restaurant";
+import { emptyRestaurantFilters, FiltersDropdown } from "./FiltersDropdown";
 import { ListBackButton } from "./ListBackButton";
 import { ListPageShell } from "./ListPageShell";
+import { SavedRestaurantList } from "../restaurant/SavedRestaurantList";
 
 export function WishlistScreen() {
+  const [filters, setFilters] = useState<RestaurantFilters>(emptyRestaurantFilters);
+
   return (
     <ListPageShell title="Deseados">
       {({ contentWidth }) => (
         <View style={[styles.contentBlock, { width: contentWidth }]}>
           <ListBackButton width={contentWidth} />
-          <FiltersDropdown width={contentWidth} />
+          <FiltersDropdown filters={filters} onChange={setFilters} width={contentWidth} />
+          <SavedRestaurantList contentWidth={contentWidth} filters={filters} status="want_to_go" />
         </View>
       )}
     </ListPageShell>

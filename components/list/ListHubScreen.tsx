@@ -1,12 +1,16 @@
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { theme } from "../../constants/theme";
-import { FiltersDropdown } from "./FiltersDropdown";
+import type { RestaurantFilters } from "../../types/restaurant";
+import { emptyRestaurantFilters, FiltersDropdown } from "./FiltersDropdown";
 import { ListPageShell } from "./ListPageShell";
+import { SavedRestaurantList } from "../restaurant/SavedRestaurantList";
 
 export function ListHubScreen() {
   const router = useRouter();
+  const [filters, setFilters] = useState<RestaurantFilters>(emptyRestaurantFilters);
 
   return (
     <ListPageShell title="Lista">
@@ -29,7 +33,8 @@ export function ListHubScreen() {
             </Pressable>
           </View>
 
-          <FiltersDropdown width={contentWidth} />
+          <FiltersDropdown filters={filters} onChange={setFilters} width={contentWidth} />
+          <SavedRestaurantList contentWidth={contentWidth} filters={filters} status="visited" />
         </View>
       )}
     </ListPageShell>

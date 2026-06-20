@@ -21,6 +21,7 @@ Tambien incluye:
 - Supabase Auth para registro, login, confirmacion de correo y cambio de contrasena.
 - Tabla publica `profiles` propuesta mediante migracion SQL con RLS.
 - Tabla `friendships` propuesta mediante migracion SQL con RLS para solicitudes y amigos.
+- Tabla `saved_restaurants` propuesta mediante migracion SQL con RLS para Deseados y restaurantes visitados.
 - Vercel Analytics y Speed Insights integrados solo en web.
 - Separacion `.web.tsx` / `.native.tsx` para preparar compatibilidad movil.
 
@@ -208,6 +209,16 @@ supabase/migrations/20260620133000_create_friendships.sql
 ```
 
 Esta migracion crea `public.friendships` con estados `pending` y `accepted`, RLS para que solo los participantes lean o borren relaciones, y una politica para que solo el receptor pueda aceptar una solicitud. Tambien habilita realtime en la tabla para refrescar bandeja, contador de solicitudes y lista de amigos.
+
+### Restaurantes Guardados
+
+El flujo de guardado usa:
+
+```txt
+supabase/migrations/20260620143000_create_saved_restaurants.sql
+```
+
+`public.saved_restaurants` guarda restaurantes de Google Places como `want_to_go` o `visited`. Los visitados pueden tener tipos de comida, fotos de platos/local, puntuacion, ocasion, precio, comentarios y visibilidad `private`/`public`. La lista de Deseados usa los datos publicos de otros usuarios para mostrar resumen comunitario; si no hay datos publicos, se muestra `Sin informacion`.
 
 ### Como Aplicar La Migracion
 

@@ -158,7 +158,9 @@ export function placeFromDetails(
     name: details.name ?? fallback.name,
     address: getShortAddress(details.formatted_address) ?? fallback.address,
     category: getPlaceCategory(types) ?? fallback.category,
+    phone: details.formatted_phone_number ?? details.international_phone_number ?? fallback.phone,
     types,
+    website: details.website ?? fallback.website,
     location:
       typeof lat === "number" && typeof lng === "number"
         ? {
