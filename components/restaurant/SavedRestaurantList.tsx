@@ -2,7 +2,8 @@ import { useRouter } from "expo-router";
 import { ChevronRight, Edit3, Trash2, X } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import type { GestureResponderEvent, ViewProps } from "react-native";
 
 import { floatingShadow, theme } from "../../constants/theme";
 import { trackAppEvent } from "../../services/appAnalytics";
@@ -351,16 +352,17 @@ function RestaurantFoldedCard({
   const hasInfo = !useCommunitySummary || Boolean(rating || priceRange || cuisineTypes.length);
 
   return (
-    <View style={styles.card}>
-      <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.cardMainButton, pressed && styles.pressed]}>
+    <View accessibilityRole="button" {...getCardPressProps(onPress)} style={styles.card}>
+      <View style={styles.cardMainButton}>
         <Text numberOfLines={1} style={styles.cardTitle}>
           {record.name}
         </Text>
-      </Pressable>
+      </View>
       {record.address ? (
         <Pressable
           accessibilityRole="link"
-          onPress={() =>
+          onPress={(event) => {
+            stopPressPropagation(event);
             openExternalUrl(
               getGoogleMapsUrl({
                 address: record.address,
@@ -369,8 +371,8 @@ function RestaurantFoldedCard({
                 name: record.name,
                 placeId: record.google_place_id,
               }),
-            )
-          }
+            );
+          }}
         >
           <Text numberOfLines={1} style={styles.cardAddressLink}>
             {record.address}
@@ -583,7 +585,10 @@ function CommunityVisitorsButton({ onPress, visitors }: CommunityVisitorsButtonP
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={onPress}
+      onPress={(event) => {
+        stopPressPropagation(event);
+        onPress();
+      }}
       style={({ pressed }) => [styles.visitorsButton, pressed && styles.pressed]}
     >
       <Text numberOfLines={1} style={styles.visitorsButtonText}>
@@ -646,7 +651,10 @@ function ActionButton({ danger, disabled, icon, label, onPress }: ActionButtonPr
     <Pressable
       accessibilityRole="button"
       disabled={disabled}
-      onPress={onPress}
+      onPress={(event) => {
+        stopPressPropagation(event);
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.actionButton,
         danger && styles.actionButtonDanger,
@@ -658,6 +666,23 @@ function ActionButton({ danger, disabled, icon, label, onPress }: ActionButtonPr
       <Text style={[styles.actionButtonText, danger && styles.actionButtonTextDanger]}>{label}</Text>
     </Pressable>
   );
+}
+
+function stopPressPropagation(event: GestureResponderEvent) {
+  event.stopPropagation?.();
+  (event.nativeEvent as { stopPropagation?: () => void }).stopPropagation?.();
+}
+
+function getCardPressProps(onPress: () => void): ViewProps {
+  if (Platform.OS !== "web") {
+    return {
+      onTouchEnd: onPress,
+    };
+  }
+
+  return {
+    onClick: onPress,
+  } as unknown as ViewProps;
 }
 
 function recordToPlace(record: SavedRestaurantRecord): SavoryPlace {
