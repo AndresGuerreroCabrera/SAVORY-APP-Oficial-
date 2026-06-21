@@ -251,6 +251,144 @@ export async function createGroup(input: { avatarUrl?: string | null; friendIds:
   }
 }
 
+export async function updateGroup(input: { avatarUrl?: string | null; groupId: string; name?: string }) {
+  if (!supabase) {
+    return { data: null, error: new Error("Supabase no esta configurado.") };
+  }
+
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !sessionData.session) {
+      return { data: null, error: normalizeSupabaseError(sessionError) ?? new Error("Inicia sesion para editar grupos.") };
+    }
+
+    const payload: { avatar_url?: string | null; name?: string } = {};
+    if (typeof input.name === "string") {
+      payload.name = input.name.trim();
+    }
+    if ("avatarUrl" in input) {
+      payload.avatar_url = input.avatarUrl ?? null;
+    }
+
+    const { data, error } = await supabase
+      .from("groups")
+      .update(payload)
+      .eq("id", input.groupId)
+      .eq("owner_id", sessionData.session.user.id)
+      .select("id, owner_id, name, avatar_url, created_at, updated_at")
+      .single();
+
+    const group = data ? await withMemberCount(normalizeGroupSummary(data)) : null;
+
+    if (!error && group) {
+      void trackAppEvent({
+        entityId: group.id,
+        entityType: "group",
+        eventName: "group_updated",
+        metadata: {
+          changed_avatar: "avatarUrl" in input,
+          changed_name: typeof input.name === "string",
+          member_count: group.member_count,
+        },
+      });
+    }
+
+    return { data: group, error: normalizeSupabaseError(error) };
+  } catch (error) {
+    return { data: null, error: normalizeSupabaseError(error) };
+  }
+}
+
+export async function addGroupMembers(groupId: string, friendIds: string[]) {
+  if (!supabase) {
+    return { error: new Error("Supabase no esta configurado.") };
+  }
+
+  try {
+    const uniqueFriendIds = Array.from(new Set(friendIds)).filter(Boolean);
+
+    if (uniqueFriendIds.length === 0) {
+      return { error: null };
+    }
+
+    const rows = uniqueFriendIds.map((friendId) => ({
+      group_id: groupId,
+      role: "member",
+      user_id: friendId,
+    }));
+    const { error } = await supabase
+      .from("group_members")
+      .upsert(rows, { ignoreDuplicates: true, onConflict: "group_id,user_id" });
+
+    if (!error) {
+      void trackAppEvent({
+        entityId: groupId,
+        entityType: "group",
+        eventName: "group_members_added",
+        metadata: { added_count: uniqueFriendIds.length },
+      });
+    }
+
+    return { error: normalizeSupabaseError(error) };
+  } catch (error) {
+    return { error: normalizeSupabaseError(error) };
+  }
+}
+
+export async function removeGroupMember(groupId: string, memberId: string) {
+  if (!supabase) {
+    return { error: new Error("Supabase no esta configurado.") };
+  }
+
+  try {
+    const { error } = await supabase.from("group_members").delete().eq("group_id", groupId).eq("user_id", memberId);
+
+    if (!error) {
+      void trackAppEvent({
+        entityId: groupId,
+        entityType: "group",
+        eventName: "group_member_removed",
+        metadata: { removed_user_id: memberId },
+      });
+    }
+
+    return { error: normalizeSupabaseError(error) };
+  } catch (error) {
+    return { error: normalizeSupabaseError(error) };
+  }
+}
+
+export async function leaveGroup(groupId: string) {
+  if (!supabase) {
+    return { error: new Error("Supabase no esta configurado.") };
+  }
+
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !sessionData.session) {
+      return { error: normalizeSupabaseError(sessionError) ?? new Error("Inicia sesion para salir del grupo.") };
+    }
+
+    const userId = sessionData.session.user.id;
+    const { error } = await supabase.from("group_members").delete().eq("group_id", groupId).eq("user_id", userId);
+
+    if (!error) {
+      void trackAppEvent({
+        entityId: groupId,
+        entityType: "group",
+        eventName: "group_left",
+        metadata: { user_id: userId },
+      });
+    }
+
+    return { error: normalizeSupabaseError(error) };
+  } catch (error) {
+    return { error: normalizeSupabaseError(error) };
+  }
+}
+
 export async function getGroupRestaurants(groupId: string, status: SavedRestaurantStatus) {
   if (!supabase) {
     return { data: [] as SavedRestaurantRecord[], error: new Error("Supabase no esta configurado.") };

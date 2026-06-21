@@ -160,9 +160,11 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
   }
 
   if (records.length === 0) {
+    const emptyMessage = getEmptyListMessage({ isGroupList: Boolean(groupId), isWishlist });
+
     return (
       <View style={[styles.stateBlock, { width: contentWidth }]}>
-        <Text style={styles.stateText}>{isWishlist ? "Todavía no tienes deseados." : "Todavía no has guardado restaurantes visitados."}</Text>
+        <Text style={styles.stateText}>{emptyMessage}</Text>
       </View>
     );
   }
@@ -973,6 +975,22 @@ function formatRating(value: number | null) {
   }
 
   return `${value.toLocaleString("es-ES", { maximumFractionDigits: 1 })}/10`;
+}
+
+function getEmptyListMessage({ isGroupList, isWishlist }: { isGroupList: boolean; isWishlist: boolean }) {
+  if (isGroupList && isWishlist) {
+    return "Esta lista compartida aun no tiene deseados. Guardad restaurantes que os apetezca probar juntos 😋";
+  }
+
+  if (isGroupList) {
+    return "Esta lista compartida aun no tiene visitados. Guardad restaurantes cuando descubrais sitios que os gusten 😋";
+  }
+
+  if (isWishlist) {
+    return "Aun no tienes deseados. Guarda restaurantes que quieras probar y empieza tu lista 😋";
+  }
+
+  return "Aun no has guardado restaurantes visitados. Anade sitios que te hayan gustado para recordarlos y compartirlos 😋";
 }
 
 function getHoursSince(value: string) {

@@ -56,7 +56,18 @@ export const SAVORY_MAP_STYLE: google.maps.MapTypeStyle[] = [
   },
   {
     featureType: "poi.business",
-    stylers: [{ visibility: "off" }],
+    elementType: "labels",
+    stylers: [{ visibility: "on" }],
+  },
+  {
+    featureType: "poi.business",
+    elementType: "labels.icon",
+    stylers: [{ visibility: "on" }, { saturation: -35 }, { lightness: 18 }],
+  },
+  {
+    featureType: "poi.business",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#4B4F55" }],
   },
   {
     featureType: "poi.attraction",
