@@ -182,6 +182,7 @@ export default function SavoryMap() {
   const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const controlWidth = Math.min(overlayWidth, 430);
+  const pinFilterWidth = Math.min(overlayWidth, 520);
 
   useEffect(() => {
     let cancelled = false;
@@ -657,7 +658,7 @@ export default function SavoryMap() {
       </View>
 
       <View pointerEvents="box-none" style={styles.pinFilterOverlay}>
-        <View style={styles.pinFilter}>
+        <View style={[styles.pinFilter, { width: pinFilterWidth }]}>
           <PinFilterButton active={savedPinFilter === "all"} label="Todos" onPress={() => setSavedPinFilter("all")} />
           <PinFilterButton
             active={savedPinFilter === "visited"}

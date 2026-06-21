@@ -586,12 +586,7 @@ export function ProfileScreen() {
               </View>
             ) : session ? (
               <View style={styles.sectionGap}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: profileMenuOpen }}
-                  onPress={() => setProfileMenuOpen((isOpen) => !isOpen)}
-                  style={({ pressed }) => [styles.profileDisclosure, pressed && styles.buttonPressed]}
-                >
+                <View style={styles.profileDisclosure}>
                   <Pressable
                     accessibilityRole={profile?.avatar_url ? "imagebutton" : "button"}
                     onPress={(event) => {
@@ -608,13 +603,20 @@ export function ProfileScreen() {
                       <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={24} strokeWidth={2.3} />
                     )}
                   </Pressable>
-                  <View style={styles.identityText}>
-                    <Text style={styles.nameText}>{profileName}</Text>
-                  </View>
-                  <View style={[styles.chevron, profileMenuOpen && styles.chevronOpen]}>
-                    <SavoryIcon color={theme.colors.text} glyph={ChevronIcon} size={20} strokeWidth={2.4} />
-                  </View>
-                </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: profileMenuOpen }}
+                    onPress={() => setProfileMenuOpen((isOpen) => !isOpen)}
+                    style={({ pressed }) => [styles.profileDisclosureToggle, pressed && styles.buttonPressed]}
+                  >
+                    <View style={styles.identityText}>
+                      <Text style={styles.nameText}>{profileName}</Text>
+                    </View>
+                    <View style={[styles.chevron, profileMenuOpen && styles.chevronOpen]}>
+                      <SavoryIcon color={theme.colors.text} glyph={ChevronIcon} size={20} strokeWidth={2.4} />
+                    </View>
+                  </Pressable>
+                </View>
 
                 {profileMenuOpen ? (
                   <View style={styles.profileDropdown}>
@@ -1464,8 +1466,8 @@ type UserChipProps = {
 };
 
 function UserChip({ onAvatarPress, onPress, profile }: UserChipProps) {
-  const content = (
-    <View style={styles.userChip}>
+  return (
+    <View style={[styles.userChip, onPress && styles.userChipButton]}>
       <Pressable
         accessibilityRole={profile.avatar_url ? "imagebutton" : "button"}
         onPress={(event) => {
@@ -1480,20 +1482,18 @@ function UserChip({ onAvatarPress, onPress, profile }: UserChipProps) {
           <SavoryIcon color={theme.colors.coral} glyph={UserIcon} size={18} strokeWidth={2.2} />
         )}
       </Pressable>
-      <Text numberOfLines={1} style={styles.userChipName}>
-        {profile.username}
-      </Text>
+      {onPress ? (
+        <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.userChipNameButton, pressed && styles.buttonPressed]}>
+          <Text numberOfLines={1} style={styles.userChipName}>
+            {profile.username}
+          </Text>
+        </Pressable>
+      ) : (
+        <Text numberOfLines={1} style={styles.userChipName}>
+          {profile.username}
+        </Text>
+      )}
     </View>
-  );
-
-  if (!onPress) {
-    return content;
-  }
-
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.userChipButton, pressed && styles.buttonPressed]}>
-      {content}
-    </Pressable>
   );
 }
 
@@ -1869,6 +1869,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  userChipNameButton: {
+    borderRadius: theme.radius.md,
+    flex: 1,
+    minWidth: 0,
+  },
   userMiniAvatar: {
     alignItems: "center",
     backgroundColor: theme.colors.coralSoft,
@@ -2183,6 +2188,15 @@ const styles = StyleSheet.create({
     minHeight: 68,
     paddingHorizontal: 12,
     paddingVertical: 8,
+  },
+  profileDisclosureToggle: {
+    alignItems: "center",
+    borderRadius: theme.radius.md,
+    flex: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 52,
+    minWidth: 0,
   },
   profileDropdown: {
     gap: 14,

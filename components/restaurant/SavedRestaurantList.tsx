@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { floatingShadow, theme } from "../../constants/theme";
+import { deleteGroupRestaurant, getGroupRestaurants } from "../../services/groups";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
 import {
   deleteSavedRestaurant,
@@ -27,6 +28,7 @@ import { RestaurantSaveSheet } from "./RestaurantSaveSheet";
 type SavedRestaurantListProps = {
   contentWidth: number;
   filters?: RestaurantFilters;
+  groupId?: string;
   publicUserId?: string;
   status: SavedRestaurantStatus;
 };
@@ -41,7 +43,7 @@ const EditIcon = Edit3 as SavoryIconGlyph;
 const NextIcon = ChevronRight as SavoryIconGlyph;
 const TrashIcon = Trash2 as SavoryIconGlyph;
 
-export function SavedRestaurantList({ contentWidth, filters, publicUserId, status }: SavedRestaurantListProps) {
+export function SavedRestaurantList({ contentWidth, filters, groupId, publicUserId, status }: SavedRestaurantListProps) {
   const [records, setRecords] = useState<SavedRestaurantRecord[]>([]);
   const [summaries, setSummaries] = useState<Map<string, RestaurantCommunitySummary>>(new Map());
   const [selectedRestaurant, setSelectedRestaurant] = useState<SelectedRestaurant | null>(null);
@@ -66,6 +68,8 @@ export function SavedRestaurantList({ contentWidth, filters, publicUserId, statu
     try {
       const { data, error: loadError } = publicUserId
         ? await getPublicUserVisitedRestaurants(publicUserId)
+        : groupId
+          ? await getGroupRestaurants(groupId, status)
         : await getCurrentUserSavedRestaurants(status);
 
       if (loadError) {
@@ -85,7 +89,7 @@ export function SavedRestaurantList({ contentWidth, filters, publicUserId, statu
     } finally {
       setLoading(false);
     }
-  }, [publicUserId, status]);
+  }, [groupId, publicUserId, status]);
 
   useEffect(() => {
     void loadRestaurants();
@@ -99,7 +103,9 @@ export function SavedRestaurantList({ contentWidth, filters, publicUserId, statu
 
       setDeletingRestaurantId(record.id);
       setError(null);
-      const { error: deleteError } = await deleteSavedRestaurant(record.id);
+      const { error: deleteError } = groupId
+        ? await deleteGroupRestaurant(record.id, groupId)
+        : await deleteSavedRestaurant(record.id);
       setDeletingRestaurantId(null);
 
       if (deleteError) {
@@ -110,7 +116,7 @@ export function SavedRestaurantList({ contentWidth, filters, publicUserId, statu
       setSelectedRestaurant((selected) => (selected?.record.id === record.id ? null : selected));
       await loadRestaurants();
     },
-    [isWishlist, loadRestaurants],
+    [groupId, isWishlist, loadRestaurants],
   );
 
   if (loading) {
@@ -209,8 +215,11 @@ export function SavedRestaurantList({ contentWidth, filters, publicUserId, statu
         {editingRestaurant ? (
           <RestaurantSaveSheet
             historyMode="replace_latest"
+            groupId={groupId}
             initialRecord={editingRestaurant}
+            initialTarget={groupId ? "group" : "personal"}
             initialStatus="visited"
+            lockTarget={Boolean(groupId)}
             lockStatus
             onClose={() => setEditingRestaurant(null)}
             onSaved={loadRestaurants}
@@ -229,10 +238,17 @@ export function SavedRestaurantList({ contentWidth, filters, publicUserId, statu
         {markingVisitedRestaurant ? (
           <RestaurantSaveSheet
             initialStatus="visited"
+            groupId={groupId}
+            initialTarget={groupId ? "group" : "personal"}
+            lockTarget={Boolean(groupId)}
             lockStatus
             onClose={() => setMarkingVisitedRestaurant(null)}
             onSaved={async () => {
-              await deleteSavedRestaurant(markingVisitedRestaurant.id);
+              if (groupId) {
+                await deleteGroupRestaurant(markingVisitedRestaurant.id, groupId);
+              } else {
+                await deleteSavedRestaurant(markingVisitedRestaurant.id);
+              }
               await loadRestaurants();
             }}
             place={recordToPlace(markingVisitedRestaurant)}

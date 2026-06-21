@@ -1,10 +1,11 @@
 import { Camera, ChevronLeft, X } from "lucide-react-native";
 import type { RefObject } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { CUISINE_TYPES, OCCASION_TYPES, PRICE_RANGES } from "../../constants/restaurantOptions";
 import { floatingShadow, theme } from "../../constants/theme";
+import { getCurrentUserGroups, saveGroupRestaurant, type GroupSummary } from "../../services/groups";
 import { compressImageFile } from "../../services/imageCompression";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
 import { saveRestaurant } from "../../services/savedRestaurants";
@@ -22,9 +23,12 @@ import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 type RestaurantSaveSheetProps = {
   place: SavoryPlace;
   width: number;
+  groupId?: string;
   historyMode?: "append" | "replace_latest";
   initialRecord?: SavedRestaurantRecord;
   initialStatus?: SavedRestaurantStatus;
+  initialTarget?: SaveTarget;
+  lockTarget?: boolean;
   lockStatus?: boolean;
   onClose: () => void;
   onSaved?: () => Promise<void> | void;
@@ -32,6 +36,7 @@ type RestaurantSaveSheetProps = {
 
 type VisitedStep = "food" | "local" | "service" | "visibility";
 type PhotoKind = "dish" | "local";
+type SaveTarget = "personal" | "group";
 
 const CameraIcon = Camera as SavoryIconGlyph;
 const CloseIcon = X as SavoryIconGlyph;
@@ -53,9 +58,12 @@ const STEP_MENU_ITEMS: Array<{ label: string; value: VisitedStep }> = [
 ];
 
 export function RestaurantSaveSheet({
+  groupId,
   historyMode = "append",
   initialRecord,
   initialStatus,
+  initialTarget,
+  lockTarget,
   lockStatus,
   onSaved,
   place,
@@ -75,10 +83,56 @@ export function RestaurantSaveSheet({
   const [priceRange, setPriceRange] = useState<string | null>(initialRecord?.price_range ?? null);
   const [serviceComment, setServiceComment] = useState(initialRecord?.service_comment ?? "");
   const [generalComment, setGeneralComment] = useState(initialRecord?.general_comment ?? "");
+  const [saveTarget, setSaveTarget] = useState<SaveTarget>(initialTarget ?? (groupId ? "group" : "personal"));
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(groupId ?? null);
+  const [groups, setGroups] = useState<GroupSummary[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<RestaurantPhoto | null>(null);
+
+  useEffect(() => {
+    if (saveTarget !== "group" || groupId) {
+      return;
+    }
+
+    let active = true;
+    setLoadingGroups(true);
+    setGroupsError(null);
+
+    getCurrentUserGroups()
+      .then(({ data, error: loadError }) => {
+        if (!active) {
+          return;
+        }
+
+        setGroups(data);
+
+        if (!selectedGroupId && data[0]) {
+          setSelectedGroupId(data[0].id);
+        }
+
+        if (loadError) {
+          setGroupsError(loadError.message);
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setGroupsError(getSupabaseUiError(loadError, "No se pudieron cargar tus grupos."));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingGroups(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [groupId, saveTarget, selectedGroupId]);
 
   const saveCurrentRestaurant = async () => {
     setError(null);
@@ -91,6 +145,11 @@ export function RestaurantSaveSheet({
 
     if (!supabase) {
       setError("Supabase no está configurado.");
+      return;
+    }
+
+    if (saveTarget === "group" && !selectedGroupId) {
+      setError("Selecciona un grupo para guardar este restaurante.");
       return;
     }
 
@@ -112,7 +171,7 @@ export function RestaurantSaveSheet({
       return;
     }
 
-    const { alreadyExists, error: saveError } = await saveRestaurant({
+    const saveInput = {
       cuisineTypes: status === "visited" ? cuisineTypes : [],
       dishPhotos: status === "visited" ? dishPhotos : [],
       foodRating: status === "visited" ? foodRating : 0,
@@ -127,7 +186,11 @@ export function RestaurantSaveSheet({
       status,
       userId: sessionData.session.user.id,
       visibility: status === "visited" ? visibility : "private",
-    });
+    };
+    const { alreadyExists, error: saveError } =
+      saveTarget === "group"
+        ? await saveGroupRestaurant({ ...saveInput, groupId: selectedGroupId as string })
+        : await saveRestaurant(saveInput);
 
     setSaving(false);
 
@@ -137,11 +200,23 @@ export function RestaurantSaveSheet({
     }
 
     if (alreadyExists) {
-      setMessage("Ya tienes este restaurante guardado en Deseados.");
+      setMessage(
+        saveTarget === "group"
+          ? "Este restaurante ya esta guardado en Deseados del grupo."
+          : "Ya tienes este restaurante guardado en Deseados.",
+      );
       return;
     }
 
-    setMessage(status === "visited" ? "Restaurante guardado en tu lista." : "Restaurante guardado en Deseados.");
+    setMessage(
+      saveTarget === "group"
+        ? status === "visited"
+          ? "Restaurante guardado en el grupo."
+          : "Restaurante guardado en Deseados del grupo."
+        : status === "visited"
+          ? "Restaurante guardado en tu lista."
+          : "Restaurante guardado en Deseados.",
+    );
     await onSaved?.();
     window.setTimeout(onClose, 1000);
   };
@@ -249,6 +324,21 @@ export function RestaurantSaveSheet({
             ) : null}
           </View>
         ) : null}
+
+        {lockTarget ? null : (
+          <>
+            <TargetChoice value={saveTarget} onChange={setSaveTarget} />
+            {saveTarget === "group" ? (
+              <GroupPicker
+                error={groupsError}
+                groups={groups}
+                loading={loadingGroups}
+                selectedGroupId={selectedGroupId}
+                onSelect={setSelectedGroupId}
+              />
+            ) : null}
+          </>
+        )}
 
         {lockStatus ? null : (
           <SegmentedChoice
@@ -406,6 +496,95 @@ type SegmentedChoiceProps<T extends string> = {
   value: T;
   onChange: (value: T) => void;
 };
+
+type TargetChoiceProps = {
+  value: SaveTarget;
+  onChange: (value: SaveTarget) => void;
+};
+
+function TargetChoice({ onChange, value }: TargetChoiceProps) {
+  return (
+    <View style={styles.targetSegmented}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: value === "personal" }}
+        onPress={() => onChange("personal")}
+        style={[styles.targetButton, value === "personal" && styles.segmentButtonActive]}
+      >
+        <Text style={[styles.segmentText, value === "personal" && styles.segmentTextActive]}>Lista personal</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: value === "group" }}
+        onPress={() => onChange("group")}
+        style={[styles.targetButton, value === "group" && styles.segmentButtonActive]}
+      >
+        <Text style={[styles.segmentText, value === "group" && styles.segmentTextActive]}>Lista compartida</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+type GroupPickerProps = {
+  error: string | null;
+  groups: GroupSummary[];
+  loading: boolean;
+  selectedGroupId: string | null;
+  onSelect: (groupId: string) => void;
+};
+
+function GroupPicker({ error, groups, loading, onSelect, selectedGroupId }: GroupPickerProps) {
+  if (loading) {
+    return (
+      <View style={styles.groupPickerState}>
+        <ActivityIndicator color={theme.colors.coral} size="small" />
+        <Text style={styles.groupPickerStateText}>Cargando grupos</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return <Text style={styles.errorText}>{error}</Text>;
+  }
+
+  if (groups.length === 0) {
+    return <Text style={styles.groupPickerStateText}>Todavia no tienes grupos.</Text>;
+  }
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupPickerScroll}>
+      <View style={styles.groupPickerContent}>
+        {groups.map((group) => {
+          const selected = group.id === selectedGroupId;
+
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              key={group.id}
+              onPress={() => onSelect(group.id)}
+              style={[styles.groupChoice, selected && styles.groupChoiceSelected]}
+            >
+              {group.avatar_url ? (
+                <Image source={{ uri: group.avatar_url }} style={styles.groupChoiceAvatar} />
+              ) : (
+                <View style={styles.groupChoiceAvatarFallback}>
+                  <Text style={styles.groupChoiceInitial}>{group.name.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={styles.groupChoiceTextBlock}>
+                <Text numberOfLines={1} style={styles.groupChoiceName}>
+                  {group.name}
+                </Text>
+                <Text style={styles.groupChoiceMeta}>{group.member_count} usuarios</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
 
 function SegmentedChoice<T extends string>({ leftLabel, onChange, rightLabel, value }: SegmentedChoiceProps<T>) {
   const leftValue = leftLabel === "Privado" ? "private" : "want_to_go";
@@ -756,6 +935,23 @@ const styles = StyleSheet.create({
     gap: 4,
     padding: 4,
   },
+  targetSegmented: {
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    padding: 5,
+  },
+  targetButton: {
+    alignItems: "center",
+    borderRadius: theme.radius.md,
+    flex: 1,
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
   segmentButton: {
     alignItems: "center",
     borderRadius: theme.radius.pill,
@@ -774,6 +970,77 @@ const styles = StyleSheet.create({
   },
   segmentTextActive: {
     color: theme.colors.white,
+  },
+  groupPickerScroll: {
+    maxHeight: 86,
+  },
+  groupPickerContent: {
+    flexDirection: "row",
+    gap: 9,
+    paddingVertical: 2,
+  },
+  groupChoice: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    minHeight: 70,
+    padding: 10,
+    width: 190,
+  },
+  groupChoiceSelected: {
+    backgroundColor: theme.colors.coralSoft,
+    borderColor: theme.colors.coral,
+  },
+  groupChoiceAvatar: {
+    backgroundColor: theme.colors.surfaceSoft,
+    borderRadius: theme.radius.pill,
+    height: 42,
+    width: 42,
+  },
+  groupChoiceAvatarFallback: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderRadius: theme.radius.pill,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  groupChoiceInitial: {
+    color: theme.colors.coral,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  groupChoiceTextBlock: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  groupChoiceName: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
+  groupChoiceMeta: {
+    color: theme.colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 15,
+  },
+  groupPickerState: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  groupPickerStateText: {
+    color: theme.colors.muted,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
   },
   editQuickControls: {
     backgroundColor: theme.colors.white,
