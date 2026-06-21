@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { trackAppEvent } from "./appAnalytics";
 import type { SavoryPlace } from "../types/place";
 import type {
   RestaurantPhoto,
@@ -205,7 +206,19 @@ export async function createGroup(input: { avatarUrl?: string | null; friendIds:
       return { data: null, error: normalizeSupabaseError(membersError) };
     }
 
-    return { data: await withMemberCount(group), error: null };
+    const groupWithCount = await withMemberCount(group);
+
+    void trackAppEvent({
+      entityId: group.id,
+      entityType: "group",
+      eventName: "group_created",
+      metadata: {
+        invited_friends_count: input.friendIds.length,
+        member_count: groupWithCount.member_count,
+      },
+    });
+
+    return { data: groupWithCount, error: null };
   } catch (error) {
     return { data: null, error: normalizeSupabaseError(error) };
   }
@@ -279,7 +292,11 @@ export async function saveGroupRestaurant(input: SaveGroupRestaurantInput) {
 
     if (input.status === "want_to_go") {
       if (existing) {
-        return { alreadyExists: true, data: normalizeGroupRestaurant(existing), error: null };
+        const normalized = normalizeGroupRestaurant(existing);
+
+        void trackGroupRestaurantAnalytics("group_restaurant_save_duplicate", normalized, input.groupId);
+
+        return { alreadyExists: true, data: normalized, error: null };
       }
 
       const { data, error } = await supabase
@@ -288,7 +305,13 @@ export async function saveGroupRestaurant(input: SaveGroupRestaurantInput) {
         .select("*")
         .single();
 
-      return { alreadyExists: false, data: data ? normalizeGroupRestaurant(data) : null, error: normalizeSupabaseError(error) };
+      const normalized = data ? normalizeGroupRestaurant(data) : null;
+
+      if (!error && normalized) {
+        void trackGroupRestaurantAnalytics("group_restaurant_saved", normalized, input.groupId);
+      }
+
+      return { alreadyExists: false, data: normalized, error: normalizeSupabaseError(error) };
     }
 
     const nextVisit = buildVisitSnapshot(payload);
@@ -309,7 +332,15 @@ export async function saveGroupRestaurant(input: SaveGroupRestaurantInput) {
         .select("*")
         .single();
 
-      return { alreadyExists: false, data: data ? normalizeGroupRestaurant(data) : null, error: normalizeSupabaseError(error) };
+      const normalized = data ? normalizeGroupRestaurant(data) : null;
+
+      if (!error && normalized) {
+        void trackGroupRestaurantAnalytics("group_restaurant_visit_updated", normalized, input.groupId, {
+          history_mode: input.historyMode ?? "append",
+        });
+      }
+
+      return { alreadyExists: false, data: normalized, error: normalizeSupabaseError(error) };
     }
 
     const { data, error } = await supabase
@@ -318,7 +349,13 @@ export async function saveGroupRestaurant(input: SaveGroupRestaurantInput) {
       .select("*")
       .single();
 
-    return { alreadyExists: false, data: data ? normalizeGroupRestaurant(data) : null, error: normalizeSupabaseError(error) };
+    const normalized = data ? normalizeGroupRestaurant(data) : null;
+
+    if (!error && normalized) {
+      void trackGroupRestaurantAnalytics("group_restaurant_saved", normalized, input.groupId);
+    }
+
+    return { alreadyExists: false, data: normalized, error: normalizeSupabaseError(error) };
   } catch (error) {
     return { alreadyExists: false, data: null, error: normalizeSupabaseError(error) };
   }
@@ -330,7 +367,18 @@ export async function deleteGroupRestaurant(recordId: string, groupId: string) {
   }
 
   try {
+    const { data: existing } = await supabase
+      .from("group_restaurants")
+      .select("*")
+      .eq("id", recordId)
+      .eq("group_id", groupId)
+      .maybeSingle();
+
     const { error } = await supabase.from("group_restaurants").delete().eq("id", recordId).eq("group_id", groupId);
+
+    if (!error && existing) {
+      void trackGroupRestaurantAnalytics("group_restaurant_deleted", normalizeGroupRestaurant(existing), groupId);
+    }
 
     return { error: normalizeSupabaseError(error) };
   } catch (error) {
@@ -414,6 +462,30 @@ function dedupeProfiles(profiles: SocialProfile[]) {
 
     seen.add(profile.id);
     return true;
+  });
+}
+
+async function trackGroupRestaurantAnalytics(
+  eventName: string,
+  record: SavedRestaurantRecord,
+  groupId: string,
+  metadata: Record<string, unknown> = {},
+) {
+  await trackAppEvent({
+    entityId: record.google_place_id,
+    entityType: "restaurant",
+    eventName,
+    metadata: {
+      cuisine_types: record.cuisine_types,
+      group_id: groupId,
+      has_location: record.location_lat !== null && record.location_lng !== null,
+      list_scope: "group",
+      price_range: record.price_range,
+      rating: record.food_rating,
+      status: record.status,
+      visibility: record.visibility,
+      ...metadata,
+    },
   });
 }
 

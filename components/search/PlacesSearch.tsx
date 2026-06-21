@@ -3,6 +3,7 @@ import type { TextStyle } from "react-native";
 import { Search, X } from "lucide-react-native";
 
 import { floatingShadow, theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import type { SavoryPlace } from "../../types/place";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
@@ -80,7 +81,20 @@ export function PlacesSearch({
                   accessibilityLabel={`Seleccionar ${place.name}`}
                   accessibilityRole="button"
                   key={place.id}
-                  onPress={() => onSelectPlace(place)}
+                  onPress={() => {
+                    void trackAppEvent({
+                      entityId: place.placeId || place.id,
+                      entityType: "restaurant",
+                      eventName: "restaurant_search_result_selected",
+                      metadata: {
+                        category: place.category ?? null,
+                        has_address: Boolean(place.address),
+                        name: place.name,
+                        types: place.types,
+                      },
+                    });
+                    onSelectPlace(place);
+                  }}
                   style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
                 >
                   <View style={styles.resultDot} />

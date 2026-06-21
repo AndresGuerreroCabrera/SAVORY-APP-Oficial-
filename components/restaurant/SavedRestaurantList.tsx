@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { floatingShadow, theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import { deleteGroupRestaurant, getGroupRestaurants } from "../../services/groups";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
 import {
@@ -162,7 +163,18 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
             onDelete={!publicUserId ? () => void handleDeleteRestaurant(record) : undefined}
             onEdit={!isWishlist && !publicUserId ? () => setEditingRestaurant(record) : undefined}
             onMarkVisited={isWishlist && !publicUserId ? () => setMarkingVisitedRestaurant(record) : undefined}
-            onPress={() => setSelectedRestaurant({ record, summary })}
+            onPress={() => {
+              void trackAppEvent({
+                entityId: record.google_place_id,
+                entityType: "restaurant",
+                eventName: "saved_restaurant_detail_opened",
+                metadata: {
+                  list_scope: groupId ? "group" : publicUserId ? "public_profile" : "personal",
+                  status: record.status,
+                },
+              });
+              setSelectedRestaurant({ record, summary });
+            }}
             record={record}
             summary={summary}
             showVisibility={!isWishlist && !publicUserId}

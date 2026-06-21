@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { trackAppEvent } from "./appAnalytics";
 import type { SavoryPlace } from "../types/place";
 import type {
   RestaurantCommunitySummary,
@@ -72,6 +73,7 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
 
   if (input.status === "want_to_go") {
     if (existing) {
+      void trackRestaurantAnalytics("restaurant_save_duplicate", normalizeSavedRestaurant(existing), "personal");
       return { alreadyExists: true, data: normalizeSavedRestaurant(existing), error: null };
     }
 
@@ -81,7 +83,13 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
       .select("*")
       .single();
 
-    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error: normalizeSupabaseError(error) };
+    const normalized = data ? normalizeSavedRestaurant(data) : null;
+
+    if (!error && normalized) {
+      void trackRestaurantAnalytics("restaurant_saved", normalized, "personal");
+    }
+
+    return { alreadyExists: false, data: normalized, error: normalizeSupabaseError(error) };
   }
 
   const nextVisit = buildVisitSnapshot(payload);
@@ -101,7 +109,15 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
       .select("*")
       .single();
 
-    return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error: normalizeSupabaseError(error) };
+    const normalized = data ? normalizeSavedRestaurant(data) : null;
+
+    if (!error && normalized) {
+      void trackRestaurantAnalytics("restaurant_visit_updated", normalized, "personal", {
+        history_mode: input.historyMode ?? "append",
+      });
+    }
+
+    return { alreadyExists: false, data: normalized, error: normalizeSupabaseError(error) };
   }
 
   const { data, error } = await supabase
@@ -110,7 +126,13 @@ export async function saveRestaurant(input: SaveRestaurantInput) {
     .select("*")
     .single();
 
-  return { alreadyExists: false, data: data ? normalizeSavedRestaurant(data) : null, error: normalizeSupabaseError(error) };
+  const normalized = data ? normalizeSavedRestaurant(data) : null;
+
+  if (!error && normalized) {
+    void trackRestaurantAnalytics("restaurant_saved", normalized, "personal");
+  }
+
+  return { alreadyExists: false, data: normalized, error: normalizeSupabaseError(error) };
   } catch (error) {
     return { alreadyExists: false, data: null, error: normalizeSupabaseError(error) };
   }
@@ -128,11 +150,22 @@ export async function deleteSavedRestaurant(recordId: string) {
       return { error: normalizeSupabaseError(sessionError) ?? new Error("Inicia sesion para modificar tus listas.") };
     }
 
+    const { data: existing } = await supabase
+      .from("saved_restaurants")
+      .select("*")
+      .eq("id", recordId)
+      .eq("user_id", sessionData.session.user.id)
+      .maybeSingle();
+
     const { error } = await supabase
       .from("saved_restaurants")
       .delete()
       .eq("id", recordId)
       .eq("user_id", sessionData.session.user.id);
+
+    if (!error && existing) {
+      void trackRestaurantAnalytics("restaurant_deleted", normalizeSavedRestaurant(existing), "personal");
+    }
 
     return { error: normalizeSupabaseError(error) };
   } catch (error) {
@@ -388,6 +421,29 @@ function emptyCommunitySummary(): RestaurantCommunitySummary {
     priceRangeMode: null,
     reviewCount: 0,
   };
+}
+
+async function trackRestaurantAnalytics(
+  eventName: string,
+  record: SavedRestaurantRecord,
+  listScope: "personal" | "group",
+  metadata: Record<string, unknown> = {},
+) {
+  await trackAppEvent({
+    entityId: record.google_place_id,
+    entityType: "restaurant",
+    eventName,
+    metadata: {
+      cuisine_types: record.cuisine_types,
+      has_location: record.location_lat !== null && record.location_lng !== null,
+      list_scope: listScope,
+      price_range: record.price_range,
+      rating: record.food_rating,
+      status: record.status,
+      visibility: record.visibility,
+      ...metadata,
+    },
+  });
 }
 
 function normalizeSupabaseError(error: unknown) {

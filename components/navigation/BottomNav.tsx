@@ -3,6 +3,7 @@ import { ChevronDown, Home, List, Square, UserRound } from "lucide-react-native"
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { floatingShadow, theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
 type NavItem = {
@@ -46,7 +47,20 @@ export function BottomNav({ width }: BottomNavProps) {
             accessibilityRole="button"
             hitSlop={10}
             key={key}
-            onPress={route ? () => router.push(route as never) : undefined}
+            onPress={
+              route
+                ? () => {
+                    void trackAppEvent({
+                      entityId: route,
+                      entityType: "route",
+                      eventName: "bottom_nav_click",
+                      metadata: { label },
+                      route: pathname,
+                    });
+                    router.push(route as never);
+                  }
+                : undefined
+            }
             style={({ pressed }) => [
               styles.item,
               active && styles.itemActive,

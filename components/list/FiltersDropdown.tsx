@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 
 import { CUISINE_TYPES, OCCASION_TYPES, PRICE_RANGES } from "../../constants/restaurantOptions";
 import { theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import type { RestaurantFilters } from "../../types/restaurant";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
@@ -31,7 +32,21 @@ export function FiltersDropdown({ filters, includeVisibility, onChange, width }:
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((current) => !current)}
+        onPress={() => {
+          setOpen((current) => {
+            const nextOpen = !current;
+
+            void trackAppEvent({
+              eventName: nextOpen ? "filters_opened" : "filters_closed",
+              metadata: {
+                active_count: activeCount,
+                include_visibility: Boolean(includeVisibility),
+              },
+            });
+
+            return nextOpen;
+          });
+        }}
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
       >
         <Text style={styles.triggerText}>Filtros{activeCount > 0 ? ` (${activeCount})` : ""}</Text>
@@ -80,7 +95,17 @@ export function FiltersDropdown({ filters, includeVisibility, onChange, width }:
             </View>
           ) : null}
           {activeCount > 0 ? (
-            <Pressable accessibilityRole="button" onPress={() => onChange(emptyRestaurantFilters())} style={styles.clearButton}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                void trackAppEvent({
+                  eventName: "filters_cleared",
+                  metadata: { active_count: activeCount, include_visibility: Boolean(includeVisibility) },
+                });
+                onChange(emptyRestaurantFilters());
+              }}
+              style={styles.clearButton}
+            >
               <Text style={styles.clearButtonText}>Limpiar filtros</Text>
             </Pressable>
           ) : null}
