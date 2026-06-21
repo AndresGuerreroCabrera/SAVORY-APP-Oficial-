@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { ChevronRight, Edit3, Trash2, X } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -10,12 +11,14 @@ import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from ".
 import {
   deleteSavedRestaurant,
   getCommunitySummaries,
+  getCommunityVisitors,
   getCurrentUserSavedRestaurants,
   getPublicUserVisitedRestaurants,
 } from "../../services/savedRestaurants";
 import type { SavoryPlace } from "../../types/place";
 import type {
   RestaurantCommunitySummary,
+  RestaurantCommunityVisitor,
   RestaurantFilters,
   RestaurantPhoto,
   RestaurantVisitSnapshot,
@@ -37,6 +40,7 @@ type SavedRestaurantListProps = {
 type SelectedRestaurant = {
   record: SavedRestaurantRecord;
   summary?: RestaurantCommunitySummary;
+  visitors?: RestaurantCommunityVisitor[];
 };
 
 const CloseIcon = X as SavoryIconGlyph;
@@ -45,9 +49,12 @@ const NextIcon = ChevronRight as SavoryIconGlyph;
 const TrashIcon = Trash2 as SavoryIconGlyph;
 
 export function SavedRestaurantList({ contentWidth, filters, groupId, publicUserId, status }: SavedRestaurantListProps) {
+  const router = useRouter();
   const [records, setRecords] = useState<SavedRestaurantRecord[]>([]);
   const [summaries, setSummaries] = useState<Map<string, RestaurantCommunitySummary>>(new Map());
+  const [communityVisitors, setCommunityVisitors] = useState<Map<string, RestaurantCommunityVisitor[]>>(new Map());
   const [selectedRestaurant, setSelectedRestaurant] = useState<SelectedRestaurant | null>(null);
+  const [visibleVisitorList, setVisibleVisitorList] = useState<RestaurantCommunityVisitor[] | null>(null);
   const [editingRestaurant, setEditingRestaurant] = useState<SavedRestaurantRecord | null>(null);
   const [markingVisitedRestaurant, setMarkingVisitedRestaurant] = useState<SavedRestaurantRecord | null>(null);
   const [deletingRestaurantId, setDeletingRestaurantId] = useState<string | null>(null);
@@ -82,7 +89,17 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
       setRecords(data);
 
       if (status === "want_to_go") {
-        setSummaries(await getCommunitySummaries(data.map((record) => record.google_place_id)));
+        const placeIds = data.map((record) => record.google_place_id);
+        const [nextSummaries, nextVisitors] = await Promise.all([
+          getCommunitySummaries(placeIds),
+          getCommunityVisitors(placeIds),
+        ]);
+
+        setSummaries(nextSummaries);
+        setCommunityVisitors(nextVisitors);
+      } else {
+        setSummaries(new Map());
+        setCommunityVisitors(new Map());
       }
     } catch {
       setRecords([]);
@@ -155,6 +172,7 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
 
       {visibleRecords.map((record) => {
         const summary = summaries.get(record.google_place_id);
+        const visitors = communityVisitors.get(record.google_place_id) ?? [];
 
         return (
           <RestaurantFoldedCard
@@ -173,12 +191,14 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
                   status: record.status,
                 },
               });
-              setSelectedRestaurant({ record, summary });
+              setSelectedRestaurant({ record, summary, visitors });
             }}
+            onShowVisitors={visitors.length > 0 ? () => setVisibleVisitorList(visitors) : undefined}
             record={record}
             summary={summary}
             showVisibility={!isWishlist && !publicUserId}
             useCommunitySummary={isWishlist}
+            visitors={visitors}
           />
         );
       })}
@@ -212,7 +232,33 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
             }
             record={selectedRestaurant.record}
             summary={selectedRestaurant.summary}
+            visitors={selectedRestaurant.visitors ?? []}
+            onShowVisitors={
+              (selectedRestaurant.visitors?.length ?? 0) > 0
+                ? () => setVisibleVisitorList(selectedRestaurant.visitors ?? [])
+                : undefined
+            }
             useCommunitySummary={isWishlist}
+            width={contentWidth}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setVisibleVisitorList(null)}
+        transparent
+        visible={Boolean(visibleVisitorList)}
+      >
+        {visibleVisitorList ? (
+          <CommunityVisitorsOverlay
+            onClose={() => setVisibleVisitorList(null)}
+            onSelectVisitor={(visitor) => {
+              setVisibleVisitorList(null);
+              setSelectedRestaurant(null);
+              router.push(`/users/${visitor.userId}` as never);
+            }}
+            visitors={visibleVisitorList}
             width={contentWidth}
           />
         ) : null}
@@ -278,10 +324,12 @@ type RestaurantFoldedCardProps = {
   showVisibility: boolean;
   summary?: RestaurantCommunitySummary;
   useCommunitySummary: boolean;
+  visitors: RestaurantCommunityVisitor[];
   onDelete?: () => void;
   onEdit?: () => void;
   onMarkVisited?: () => void;
   onPress: () => void;
+  onShowVisitors?: () => void;
 };
 
 function RestaurantFoldedCard({
@@ -290,10 +338,12 @@ function RestaurantFoldedCard({
   onEdit,
   onMarkVisited,
   onPress,
+  onShowVisitors,
   record,
   showVisibility,
   summary,
   useCommunitySummary,
+  visitors,
 }: RestaurantFoldedCardProps) {
   const rating = useCommunitySummary ? summary?.medianRating ?? null : record.food_rating;
   const priceRange = useCommunitySummary ? summary?.priceRangeMode ?? null : record.price_range;
@@ -348,6 +398,7 @@ function RestaurantFoldedCard({
           {onDelete ? (
             <ActionButton danger disabled={deleting} icon={TrashIcon} label={deleting ? "Eliminando" : "Eliminar"} onPress={onDelete} />
           ) : null}
+          {useCommunitySummary ? <CommunityVisitorsButton visitors={visitors} onPress={onShowVisitors} /> : null}
         </View>
       ) : null}
     </View>
@@ -359,11 +410,13 @@ type RestaurantDetailOverlayProps = {
   record: SavedRestaurantRecord;
   summary?: RestaurantCommunitySummary;
   useCommunitySummary: boolean;
+  visitors: RestaurantCommunityVisitor[];
   width: number;
   onClose: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
   onMarkVisited?: () => void;
+  onShowVisitors?: () => void;
 };
 
 function RestaurantDetailOverlay({
@@ -372,9 +425,11 @@ function RestaurantDetailOverlay({
   onDelete,
   onEdit,
   onMarkVisited,
+  onShowVisitors,
   record,
   summary,
   useCommunitySummary,
+  visitors,
   width,
 }: RestaurantDetailOverlayProps) {
   const visits = getVisitSnapshots(record);
@@ -421,6 +476,7 @@ function RestaurantDetailOverlay({
             {onDelete ? (
               <ActionButton danger disabled={deleting} icon={TrashIcon} label={deleting ? "Eliminando" : "Eliminar"} onPress={onDelete} />
             ) : null}
+            {useCommunitySummary ? <CommunityVisitorsButton visitors={visitors} onPress={onShowVisitors} /> : null}
           </View>
         ) : null}
 
@@ -512,6 +568,81 @@ type ActionButtonProps = {
   label: string;
   onPress: () => void;
 };
+
+type CommunityVisitorsButtonProps = {
+  visitors: RestaurantCommunityVisitor[];
+  onPress?: () => void;
+};
+
+function CommunityVisitorsButton({ onPress, visitors }: CommunityVisitorsButtonProps) {
+  const latestVisitor = visitors[0];
+
+  if (!latestVisitor || !onPress) {
+    return null;
+  }
+
+  const remainingCount = Math.max(0, visitors.length - 1);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.visitorsButton, pressed && styles.pressed]}
+    >
+      <Text numberOfLines={1} style={styles.visitorsButtonText}>
+        {latestVisitor.username}
+      </Text>
+      {remainingCount > 0 ? <Text style={styles.visitorsButtonMore}>+{remainingCount}</Text> : null}
+    </Pressable>
+  );
+}
+
+type CommunityVisitorsOverlayProps = {
+  visitors: RestaurantCommunityVisitor[];
+  width: number;
+  onClose: () => void;
+  onSelectVisitor: (visitor: RestaurantCommunityVisitor) => void;
+};
+
+function CommunityVisitorsOverlay({ onClose, onSelectVisitor, visitors, width }: CommunityVisitorsOverlayProps) {
+  return (
+    <View style={styles.overlay}>
+      <Pressable accessibilityLabel="Cerrar usuarios" onPress={onClose} style={styles.backdrop} />
+      <View style={[styles.visitorsSheet, { width }]}>
+        <View style={styles.visitorsHeader}>
+          <Text style={styles.visitorsTitle}>Usuarios que han ido</Text>
+          <Pressable accessibilityRole="button" hitSlop={10} onPress={onClose} style={styles.closeButton}>
+            <SavoryIcon color={theme.colors.text} glyph={CloseIcon} size={20} strokeWidth={2.3} />
+          </Pressable>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} style={styles.visitorsScroll}>
+          {visitors.map((visitor) => (
+            <Pressable
+              accessibilityRole="button"
+              key={visitor.userId}
+              onPress={() => onSelectVisitor(visitor)}
+              style={({ pressed }) => [styles.visitorRow, pressed && styles.pressed]}
+            >
+              {visitor.avatarUrl ? (
+                <Image source={{ uri: visitor.avatarUrl }} style={styles.visitorAvatar} />
+              ) : (
+                <View style={styles.visitorAvatarFallback}>
+                  <Text style={styles.visitorAvatarInitial}>{visitor.username.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={styles.visitorTextBlock}>
+                <Text numberOfLines={1} style={styles.visitorName}>
+                  {visitor.username}
+                </Text>
+                <Text style={styles.visitorMeta}>Última visita: {formatSavedDate(visitor.lastVisitedAt)}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
 
 function ActionButton({ danger, disabled, icon, label, onPress }: ActionButtonProps) {
   return (
@@ -855,6 +986,31 @@ const styles = StyleSheet.create({
   actionButtonTextDanger: {
     color: theme.colors.danger,
   },
+  visitorsButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderColor: "#FFDAD5",
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 5,
+    minHeight: 36,
+    maxWidth: "100%",
+    paddingHorizontal: 12,
+  },
+  visitorsButtonText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+    maxWidth: 116,
+  },
+  visitorsButtonMore: {
+    color: theme.colors.coral,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+  },
   pressed: {
     opacity: 0.74,
     transform: [{ scale: 0.99 }],
@@ -958,6 +1114,80 @@ const styles = StyleSheet.create({
   },
   detailScroll: {
     maxHeight: 560,
+  },
+  visitorsSheet: {
+    ...floatingShadow,
+    backgroundColor: theme.colors.surfaceGlass,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    gap: 12,
+    maxHeight: "72%",
+    padding: 16,
+  },
+  visitorsHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  visitorsTitle: {
+    color: theme.colors.text,
+    flex: 1,
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 25,
+  },
+  visitorsScroll: {
+    maxHeight: 360,
+  },
+  visitorRow: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 11,
+    marginBottom: 8,
+    minHeight: 62,
+    padding: 10,
+  },
+  visitorAvatar: {
+    backgroundColor: theme.colors.surfaceSoft,
+    borderRadius: theme.radius.pill,
+    height: 42,
+    width: 42,
+  },
+  visitorAvatarFallback: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderRadius: theme.radius.pill,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  visitorAvatarInitial: {
+    color: theme.colors.coral,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  visitorTextBlock: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  visitorName: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 20,
+  },
+  visitorMeta: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 16,
   },
   heroSummary: {
     flexDirection: "row",

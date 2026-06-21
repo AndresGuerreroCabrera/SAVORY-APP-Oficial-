@@ -55,6 +55,14 @@ export type RestaurantCommunitySummary = {
   reviewCount: number;
 };
 
+export type RestaurantCommunityVisitor = {
+  avatarUrl: string | null;
+  displayName: string | null;
+  lastVisitedAt: string;
+  userId: string;
+  username: string;
+};
+
 export type RestaurantFilters = {
   cuisineTypes: string[];
   occasionTypes: string[];

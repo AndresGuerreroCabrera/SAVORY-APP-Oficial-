@@ -3,6 +3,7 @@ import { trackAppEvent } from "./appAnalytics";
 import type { SavoryPlace } from "../types/place";
 import type {
   RestaurantCommunitySummary,
+  RestaurantCommunityVisitor,
   RestaurantPhoto,
   RestaurantVisitSnapshot,
   SavedRestaurantRecord,
@@ -322,6 +323,55 @@ export async function getCommunitySummaries(googlePlaceIds: string[]) {
   }
 }
 
+export async function getCommunityVisitors(googlePlaceIds: string[]) {
+  const uniquePlaceIds = Array.from(new Set(googlePlaceIds.filter(Boolean)));
+
+  if (!supabase || uniquePlaceIds.length === 0) {
+    return new Map<string, RestaurantCommunityVisitor[]>();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("saved_restaurants")
+      .select("google_place_id, user_id, saved_at, profile:profiles(id, username, display_name, avatar_url)")
+      .in("google_place_id", uniquePlaceIds)
+      .eq("status", "visited")
+      .eq("visibility", "public")
+      .order("saved_at", { ascending: false });
+
+    if (error) {
+      return new Map<string, RestaurantCommunityVisitor[]>();
+    }
+
+    const grouped = new Map<string, RestaurantCommunityVisitor[]>();
+    const seenUsersByPlace = new Map<string, Set<string>>();
+
+    for (const row of data ?? []) {
+      const record = row as { google_place_id?: unknown; profile?: unknown; saved_at?: unknown; user_id?: unknown };
+      const placeId = typeof record.google_place_id === "string" ? record.google_place_id : "";
+      const visitor = normalizeCommunityVisitor(record.profile, record.user_id, record.saved_at);
+
+      if (!placeId || !visitor) {
+        continue;
+      }
+
+      const seenUsers = seenUsersByPlace.get(placeId) ?? new Set<string>();
+
+      if (seenUsers.has(visitor.userId)) {
+        continue;
+      }
+
+      seenUsers.add(visitor.userId);
+      seenUsersByPlace.set(placeId, seenUsers);
+      grouped.set(placeId, [...(grouped.get(placeId) ?? []), visitor]);
+    }
+
+    return grouped;
+  } catch {
+    return new Map<string, RestaurantCommunityVisitor[]>();
+  }
+}
+
 function normalizeSavedRestaurant(value: unknown): SavedRestaurantRecord {
   const record = value as Partial<SavedRestaurantRecord>;
 
@@ -391,6 +441,30 @@ function replaceLatestVisit(history: RestaurantVisitSnapshot[], nextVisit: Resta
   }, 0);
 
   return history.map((visit, index) => (index === latestIndex ? nextVisit : visit));
+}
+
+function normalizeCommunityVisitor(profileValue: unknown, userIdValue: unknown, savedAtValue: unknown): RestaurantCommunityVisitor | null {
+  const profile = Array.isArray(profileValue) ? profileValue[0] : profileValue;
+  const record = profile as Partial<{
+    avatar_url: unknown;
+    display_name: unknown;
+    id: unknown;
+    username: unknown;
+  }>;
+  const userId = typeof record.id === "string" ? record.id : typeof userIdValue === "string" ? userIdValue : "";
+  const username = typeof record.username === "string" ? record.username : "";
+
+  if (!userId || !username) {
+    return null;
+  }
+
+  return {
+    avatarUrl: nullableString(record.avatar_url),
+    displayName: nullableString(record.display_name),
+    lastVisitedAt: typeof savedAtValue === "string" ? savedAtValue : "",
+    userId,
+    username,
+  };
 }
 
 function buildCommunitySummary(rows: unknown[]): RestaurantCommunitySummary {
