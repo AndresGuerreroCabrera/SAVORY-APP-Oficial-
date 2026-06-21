@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, useW
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { floatingShadow, theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import { recordRestaurantScoreEvent } from "../../services/savoryScore";
 import { supabase } from "../../services/supabase";
 import { BottomNav } from "../navigation/BottomNav";
@@ -78,6 +79,14 @@ export function PublicUserProfileScreen() {
       return;
     }
 
+    void trackAppEvent({
+      entityId: profile.id,
+      entityType: "user",
+      eventName: "profile_viewed",
+      metadata: {
+        source: "public_profile",
+      },
+    });
     void recordRestaurantScoreEvent({
       eventName: "profile_view",
       googlePlaceId: `profile:${profile.id}`,

@@ -127,6 +127,17 @@ export function RecommendationsScreen() {
       return;
     }
 
+    void trackAppEvent({
+      entityId: activeRecommendation.googlePlaceId,
+      entityType: "restaurant",
+      eventName: "recommendation_impression",
+      metadata: {
+        owner_count: activeRecommendation.ownerUserIds.length,
+        recommendation_score: activeRecommendation.score,
+        review_count: activeRecommendation.reviewCount,
+      },
+      route: "/recommendations",
+    });
     void recordRestaurantScoreEvent({
       eventName: "recommendation_impression",
       googlePlaceId: activeRecommendation.googlePlaceId,
@@ -177,6 +188,17 @@ export function RecommendationsScreen() {
       }
 
       setSavedPlaceIds((current) => new Set(current).add(recommendation.googlePlaceId));
+      void trackAppEvent({
+        entityId: recommendation.googlePlaceId,
+        entityType: "restaurant",
+        eventName: "recommendation_saved",
+        metadata: {
+          already_exists: alreadyExists,
+          owner_count: recommendation.ownerUserIds.length,
+          source: "recommendations",
+        },
+        route: "/recommendations",
+      });
       setMessage(alreadyExists ? "Ya estaba en Deseados." : "Añadido a Deseados.");
     },
     [],
@@ -421,7 +443,23 @@ function RecommendationCard({
   return (
     <View style={[styles.card, { maxHeight }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Pressable accessibilityRole="button" onPress={() => onOpenDetail(recommendation)} style={({ pressed }) => pressed && styles.pressed}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            void trackAppEvent({
+              entityId: recommendation.googlePlaceId,
+              entityType: "restaurant",
+              eventName: "recommendation_clicked",
+              metadata: {
+                owner_count: recommendation.ownerUserIds.length,
+                source: "recommendations",
+              },
+              route: "/recommendations",
+            });
+            onOpenDetail(recommendation);
+          }}
+          style={({ pressed }) => pressed && styles.pressed}
+        >
           <Text numberOfLines={2} style={styles.cardTitle}>
             {recommendation.name}
           </Text>

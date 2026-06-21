@@ -192,7 +192,9 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
                 eventName: "saved_restaurant_detail_opened",
                 metadata: {
                   list_scope: groupId ? "group" : publicUserId ? "public_profile" : "personal",
+                  saved_at: record.saved_at,
                   status: record.status,
+                  time_since_saved_hours: getHoursSince(record.saved_at),
                 },
               });
               setSelectedRestaurant({ record, summary, visitors });
@@ -330,6 +332,15 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
           <RestaurantSaveSheet
             onClose={() => setSavingProfileRestaurant(null)}
             onSaved={async () => {
+              await trackAppEvent({
+                entityId: savingProfileRestaurant.google_place_id,
+                entityType: "restaurant",
+                eventName: "save_from_profile",
+                metadata: {
+                  owner_user_id: publicUserId,
+                  source: "public_profile",
+                },
+              });
               await recordRestaurantScoreEvent({
                 eventName: "save_from_profile",
                 googlePlaceId: savingProfileRestaurant.google_place_id,
@@ -921,6 +932,16 @@ function formatRating(value: number | null) {
   }
 
   return `${value.toLocaleString("es-ES", { maximumFractionDigits: 1 })}/10`;
+}
+
+function getHoursSince(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return Math.max(0, Math.round((Date.now() - date.getTime()) / 36_000) / 10);
 }
 
 function matchesRestaurantFilters(

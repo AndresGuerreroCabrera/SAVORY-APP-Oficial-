@@ -7,10 +7,11 @@ import { BottomNav } from "../navigation/BottomNav";
 
 type ListPageShellProps = {
   children?: (layout: { contentWidth: number }) => ReactNode;
+  hideHeader?: boolean;
   title: string;
 };
 
-export function ListPageShell({ children, title }: ListPageShellProps) {
+export function ListPageShell({ children, hideHeader, title }: ListPageShellProps) {
   const { width: viewportWidth } = useWindowDimensions();
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const contentWidth = Math.min(overlayWidth, 430);
@@ -23,10 +24,12 @@ export function ListPageShell({ children, title }: ListPageShellProps) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.header, { width: contentWidth }]}>
-            <View style={styles.titleAccent} />
-            <Text style={styles.title}>{title}</Text>
-          </View>
+          {hideHeader ? null : (
+            <View style={[styles.header, { width: contentWidth }]}>
+              <View style={styles.titleAccent} />
+              <Text style={styles.title}>{title}</Text>
+            </View>
+          )}
 
           {children?.({ contentWidth })}
         </ScrollView>

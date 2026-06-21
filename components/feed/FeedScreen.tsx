@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { floatingShadow, theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import { getRestaurantFeed, type RestaurantFeedPost } from "../../services/feed";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
 import type { SocialProfile } from "../../services/groups";
@@ -72,6 +73,16 @@ export function FeedScreen() {
       }
 
       seenImpressionPostIdsRef.current.add(post.id);
+      void trackAppEvent({
+        entityId: post.restaurant.google_place_id,
+        entityType: "restaurant",
+        eventName: "feed_impression",
+        metadata: {
+          feed_source: post.source,
+          owner_user_id: getPostOwnerUserId(post),
+        },
+        route: "/feed",
+      });
       void recordRestaurantScoreEvent({
         eventName: "feed_impression",
         googlePlaceId: post.restaurant.google_place_id,
@@ -166,6 +177,16 @@ export function FeedScreen() {
                 ownerUserIds: [getPostOwnerUserId(savingPost)],
                 restaurantRecordId: savingPost.restaurant.id,
                 source: "feed",
+              });
+              await trackAppEvent({
+                entityId: savingPost.restaurant.google_place_id,
+                entityType: "restaurant",
+                eventName: "restaurant_saved_from_friend",
+                metadata: {
+                  feed_source: savingPost.source,
+                  owner_user_id: getPostOwnerUserId(savingPost),
+                },
+                route: "/feed",
               });
               await loadFeed();
             }}

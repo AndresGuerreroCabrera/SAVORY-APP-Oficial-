@@ -144,9 +144,20 @@ export function ProductAnalyticsTracker() {
       });
     };
 
+    const sessionMetadata = getPageContext();
     void trackAppEvent({
       eventName: "app_session_start",
-      metadata: getPageContext(),
+      metadata: sessionMetadata,
+      route: activeRouteRef.current,
+    });
+    void trackAppEvent({
+      eventName: "session_started",
+      metadata: sessionMetadata,
+      route: activeRouteRef.current,
+    });
+    void trackAppEvent({
+      eventName: "app_opened",
+      metadata: sessionMetadata,
       route: activeRouteRef.current,
     });
 
@@ -256,9 +267,32 @@ function getPageContext() {
     language: typeof navigator !== "undefined" ? navigator.language : null,
     online: typeof navigator !== "undefined" ? navigator.onLine : null,
     query_present: typeof window !== "undefined" ? Boolean(window.location.search) : false,
+    ...getAttributionContext(),
     screen_height: typeof window !== "undefined" ? window.screen.height : null,
     screen_width: typeof window !== "undefined" ? window.screen.width : null,
   };
+}
+
+function getAttributionContext() {
+  if (typeof window === "undefined") {
+    return {
+      utm_campaign: null,
+      utm_medium: null,
+      utm_source: null,
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+
+  return {
+    utm_campaign: sanitizeQueryValue(params.get("utm_campaign")),
+    utm_medium: sanitizeQueryValue(params.get("utm_medium")),
+    utm_source: sanitizeQueryValue(params.get("utm_source")),
+  };
+}
+
+function sanitizeQueryValue(value: string | null) {
+  return value?.replace(/[^a-zA-Z0-9_ .-]/g, "").slice(0, 80) || null;
 }
 
 function getConnectionInfo() {

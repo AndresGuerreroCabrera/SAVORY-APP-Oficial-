@@ -222,6 +222,28 @@ export async function createGroup(input: { avatarUrl?: string | null; friendIds:
         member_count: groupWithCount.member_count,
       },
     });
+    void trackAppEvent({
+      entityId: group.id,
+      entityType: "group",
+      eventName: "list_created",
+      metadata: {
+        invited_friends_count: input.friendIds.length,
+        list_scope: "group",
+        member_count: groupWithCount.member_count,
+      },
+    });
+    if (input.friendIds.length > 0) {
+      void trackAppEvent({
+        entityId: group.id,
+        entityType: "group",
+        eventName: "list_shared",
+        metadata: {
+          invited_friends_count: input.friendIds.length,
+          list_scope: "group",
+          member_count: groupWithCount.member_count,
+        },
+      });
+    }
 
     return { data: groupWithCount, error: null };
   } catch (error) {

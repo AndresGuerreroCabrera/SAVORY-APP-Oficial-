@@ -10,6 +10,7 @@ import { RestaurantSaveSheet } from "../restaurant/RestaurantSaveSheet";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { SAVORY_MAP_STYLE } from "../../constants/mapStyle";
 import { theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import {
   isFoodRelatedPlace,
   normalizeAutocompletePrediction,
@@ -696,10 +697,28 @@ export default function SavoryMap() {
       }
 
       setResults(nextResults);
+      void trackAppEvent({
+        eventName: "restaurant_searched",
+        metadata: {
+          has_user_location: Boolean(searchCenter),
+          query_length: input.trim().length,
+          result_count: nextResults.length,
+          source: "map",
+        },
+        route: "/",
+      });
       setSearchError(nextResults.length > 0 ? null : "No se encontraron sitios de comida o bebida.");
     } catch {
       if (searchRequestRef.current === requestId) {
         setResults([]);
+        void trackAppEvent({
+          eventName: "restaurant_search_failed",
+          metadata: {
+            query_length: input.trim().length,
+            source: "map",
+          },
+          route: "/",
+        });
         setSearchError("La búsqueda no está disponible ahora mismo.");
       }
     } finally {
@@ -740,6 +759,16 @@ export default function SavoryMap() {
       setSearchError(null);
 
       if (!detailsService || !place.placeId) {
+        void trackAppEvent({
+          entityId: place.placeId || place.id,
+          entityType: "restaurant",
+          eventName: "restaurant_viewed",
+          metadata: {
+            source: "map_search",
+            types: place.types,
+          },
+          route: "/",
+        });
         setSelectedPlace(place);
         setActiveSheetPlace(place);
         focusPlaceOnMap(place);
@@ -768,6 +797,16 @@ export default function SavoryMap() {
           setIsSearching(false);
 
           if (status !== "OK" || !details) {
+            void trackAppEvent({
+              entityId: place.placeId || place.id,
+              entityType: "restaurant",
+              eventName: "restaurant_viewed",
+              metadata: {
+                source: "map_search",
+                types: place.types,
+              },
+              route: "/",
+            });
             setSelectedPlace(place);
             setActiveSheetPlace(place);
             focusPlaceOnMap(place);
@@ -776,6 +815,18 @@ export default function SavoryMap() {
 
           const detailedPlace = placeFromDetails(details, place);
 
+          void trackAppEvent({
+            entityId: detailedPlace.placeId || detailedPlace.id,
+            entityType: "restaurant",
+            eventName: "restaurant_viewed",
+            metadata: {
+              has_phone: Boolean(detailedPlace.phone),
+              has_website: Boolean(detailedPlace.website),
+              source: "map_search",
+              types: detailedPlace.types,
+            },
+            route: "/",
+          });
           setSelectedPlace(detailedPlace);
           setActiveSheetPlace(detailedPlace);
           focusPlaceOnMap(detailedPlace);

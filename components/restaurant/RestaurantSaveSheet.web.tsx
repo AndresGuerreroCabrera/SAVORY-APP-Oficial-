@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, PanResponder, Pressable, ScrollView, StyleShe
 
 import { CUISINE_TYPES, OCCASION_TYPES, PRICE_RANGES } from "../../constants/restaurantOptions";
 import { floatingShadow, theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import { getCurrentUserGroups, saveGroupRestaurant, type GroupSummary } from "../../services/groups";
 import { compressImageFile } from "../../services/imageCompression";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
@@ -211,6 +212,63 @@ export function RestaurantSaveSheet({
       return;
     }
 
+    const contentQuality = getRestaurantContentQuality({
+      cuisineTypes: saveInput.cuisineTypes,
+      dishPhotos: saveInput.dishPhotos,
+      foodRating: saveInput.foodRating,
+      generalComment: saveInput.generalComment,
+      localPhotos: saveInput.localPhotos,
+      occasionTypes: saveInput.occasionTypes,
+      priceRange: saveInput.priceRange,
+      serviceComment: saveInput.serviceComment,
+    });
+    const productEventName = status === "visited" ? "restaurant_marked_visited" : "restaurant_marked_want_to_go";
+    void trackAppEvent({
+      entityId: googlePlaceId,
+      entityType: "restaurant",
+      eventName: productEventName,
+      metadata: {
+        ...contentQuality,
+        is_public: status === "visited" && visibility === "public",
+        list_scope: saveTarget,
+        source: saveTarget === "group" ? "shared_list" : "personal_list",
+      },
+    });
+    if (status === "visited" && (saveInput.serviceComment || saveInput.generalComment)) {
+      void trackAppEvent({
+        entityId: googlePlaceId,
+        entityType: "restaurant",
+        eventName: "restaurant_review_added",
+        metadata: {
+          has_general_comment: Boolean(saveInput.generalComment),
+          has_service_comment: Boolean(saveInput.serviceComment),
+          list_scope: saveTarget,
+        },
+      });
+    }
+    if (status === "visited" && (saveInput.dishPhotos.length > 0 || saveInput.localPhotos.length > 0)) {
+      void trackAppEvent({
+        entityId: googlePlaceId,
+        entityType: "restaurant",
+        eventName: "restaurant_photo_added",
+        metadata: {
+          dish_photo_count: saveInput.dishPhotos.length,
+          list_scope: saveTarget,
+          local_photo_count: saveInput.localPhotos.length,
+        },
+      });
+    }
+    if (status === "visited" && saveInput.foodRating > 0) {
+      void trackAppEvent({
+        entityId: googlePlaceId,
+        entityType: "restaurant",
+        eventName: "restaurant_rating_added",
+        metadata: {
+          list_scope: saveTarget,
+          rating: saveInput.foodRating,
+        },
+      });
+    }
     setMessage(
       saveTarget === "group"
         ? status === "visited"
@@ -857,6 +915,39 @@ function getScoreEventName(status: SavedRestaurantStatus, saveTarget: SaveTarget
   }
 
   return status === "visited" ? "mark_visited" : "save_generic";
+}
+
+function getRestaurantContentQuality(input: {
+  cuisineTypes: string[];
+  dishPhotos: RestaurantPhoto[];
+  foodRating: number;
+  generalComment: string | null;
+  localPhotos: RestaurantPhoto[];
+  occasionTypes: string[];
+  priceRange: string | null;
+  serviceComment: string | null;
+}) {
+  const hasComment = Boolean(input.generalComment || input.serviceComment);
+  const hasPhoto = input.dishPhotos.length > 0 || input.localPhotos.length > 0;
+  const completedFields = [
+    input.cuisineTypes.length > 0,
+    input.occasionTypes.length > 0,
+    Boolean(input.priceRange),
+    input.foodRating > 0,
+    hasComment,
+    hasPhoto,
+  ].filter(Boolean).length;
+
+  return {
+    completed_field_count: completedFields,
+    cuisine_type_count: input.cuisineTypes.length,
+    dish_photo_count: input.dishPhotos.length,
+    has_comment: hasComment,
+    has_price: Boolean(input.priceRange),
+    has_rating: input.foodRating > 0,
+    local_photo_count: input.localPhotos.length,
+    occasion_type_count: input.occasionTypes.length,
+  };
 }
 
 const styles = StyleSheet.create({

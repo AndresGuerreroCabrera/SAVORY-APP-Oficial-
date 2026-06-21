@@ -22,6 +22,7 @@ import { BottomNav } from "../navigation/BottomNav";
 import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { floatingShadow, theme } from "../../constants/theme";
+import { trackAppEvent } from "../../services/appAnalytics";
 import { compressImageFile } from "../../services/imageCompression";
 import { isSupabaseConfigured, supabase, supabaseStorageKey } from "../../services/supabase";
 import { SavoryScoreSection } from "./SavoryScoreSection";
@@ -401,6 +402,13 @@ export function ProfileScreen() {
       return;
     }
 
+    void trackAppEvent({
+      eventName: "user_signed_in",
+      metadata: {
+        auth_method: "password",
+      },
+      route: "/profile",
+    });
     setMessage("Sesión iniciada.");
   }, [email, password, resetAuthFields, resetFeedback]);
 
@@ -462,6 +470,14 @@ export function ProfileScreen() {
       return;
     }
 
+    void trackAppEvent({
+      eventName: "user_signed_up",
+      metadata: {
+        auth_method: "password",
+        has_profile_photo: Boolean(registrationAvatar),
+      },
+      route: "/profile",
+    });
     setUsername("");
     setRegistrationAvatar(null);
     setMessage("Te hemos enviado un correo de confirmación. Abre tu email y confirma la cuenta para poder iniciar sesión.");
@@ -569,11 +585,6 @@ export function ProfileScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.header, { width: contentWidth }]}>
-            <View style={styles.titleAccent} />
-            <Text style={styles.title}>Perfil</Text>
-          </View>
-
           <View style={[styles.panel, { width: contentWidth }]}>
             {!isSupabaseConfigured ? (
               <StatusBlock
@@ -1220,6 +1231,15 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
         return;
       }
 
+      void trackAppEvent({
+        entityId: target.id,
+        entityType: "user",
+        eventName: "friend_invited",
+        metadata: {
+          source: "profile_search",
+        },
+        route: "/profile",
+      });
       setSocialMessage("Solicitud enviada.");
       await loadFriendships();
     },
@@ -1255,6 +1275,15 @@ function FriendsConnectorSection({ contentWidth, session }: FriendsConnectorSect
         return;
       }
 
+      void trackAppEvent({
+        entityId: friendshipId,
+        entityType: "friendship",
+        eventName: "friend_added",
+        metadata: {
+          source: "friend_request_inbox",
+        },
+        route: "/profile",
+      });
       setSocialMessage("Ahora sois amigos.");
       await loadFriendships();
     },

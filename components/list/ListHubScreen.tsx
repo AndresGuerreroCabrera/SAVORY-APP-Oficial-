@@ -13,7 +13,7 @@ export function ListHubScreen() {
   const [filters, setFilters] = useState<RestaurantFilters>(emptyRestaurantFilters);
 
   return (
-    <ListPageShell title="Lista">
+    <ListPageShell hideHeader title="Lista">
       {({ contentWidth }) => (
         <View style={[styles.contentBlock, { width: contentWidth }]}>
           <View style={styles.buttonRow}>
