@@ -32,6 +32,11 @@ export type GroupMember = SocialProfile & {
   role: "owner" | "member";
 };
 
+export type GroupRestaurantPin = SavedRestaurantRecord & {
+  group_id: string;
+  group_name: string;
+};
+
 type SaveGroupRestaurantInput = {
   groupId: string;
   place: SavoryPlace;
@@ -244,6 +249,54 @@ export async function getGroupRestaurants(groupId: string, status: SavedRestaura
     return { data: (data ?? []).map(normalizeGroupRestaurant), error: null };
   } catch (error) {
     return { data: [] as SavedRestaurantRecord[], error: normalizeSupabaseError(error) };
+  }
+}
+
+export async function getCurrentUserGroupRestaurantPins() {
+  if (!supabase) {
+    return { data: [] as GroupRestaurantPin[], error: new Error("Supabase no esta configurado.") };
+  }
+
+  try {
+    const { data: groups, error: groupsError } = await getCurrentUserGroups();
+
+    if (groupsError) {
+      return { data: [] as GroupRestaurantPin[], error: groupsError };
+    }
+
+    const groupIds = groups.map((group) => group.id);
+
+    if (groupIds.length === 0) {
+      return { data: [] as GroupRestaurantPin[], error: null };
+    }
+
+    const groupNameById = new Map(groups.map((group) => [group.id, group.name]));
+    const { data, error } = await supabase
+      .from("group_restaurants")
+      .select("*")
+      .in("group_id", groupIds)
+      .not("location_lat", "is", null)
+      .not("location_lng", "is", null);
+
+    if (error) {
+      return { data: [] as GroupRestaurantPin[], error: normalizeSupabaseError(error) };
+    }
+
+    return {
+      data: (data ?? []).map((row) => {
+        const record = row as { group_id?: unknown };
+        const groupId = typeof record.group_id === "string" ? record.group_id : "";
+
+        return {
+          ...normalizeGroupRestaurant(row),
+          group_id: groupId,
+          group_name: groupNameById.get(groupId) ?? "Grupo",
+        };
+      }),
+      error: null,
+    };
+  } catch (error) {
+    return { data: [] as GroupRestaurantPin[], error: normalizeSupabaseError(error) };
   }
 }
 

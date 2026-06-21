@@ -308,13 +308,15 @@ function SwipeableRecommendationCard({
   });
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 8 || Math.abs(gesture.dy) > 8,
-      onPanResponderMove: Animated.event([null, { dx: position.x, dy: position.y }], { useNativeDriver: false }),
+      onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onPanResponderMove: (_event, gesture) => {
+        position.setValue({ x: gesture.dx, y: 0 });
+      },
       onPanResponderRelease: (_event, gesture) => {
         if (gesture.dx > SWIPE_THRESHOLD) {
           Animated.timing(position, {
             duration: 180,
-            toValue: { x: 620, y: gesture.dy },
+            toValue: { x: 620, y: 0 },
             useNativeDriver: false,
           }).start(() => onSwipe("right", recommendation));
           return;
@@ -323,7 +325,7 @@ function SwipeableRecommendationCard({
         if (gesture.dx < -SWIPE_THRESHOLD) {
           Animated.timing(position, {
             duration: 180,
-            toValue: { x: -620, y: gesture.dy },
+            toValue: { x: -620, y: 0 },
             useNativeDriver: false,
           }).start(() => onSwipe("left", recommendation));
           return;
@@ -345,7 +347,7 @@ function SwipeableRecommendationCard({
       style={[
         styles.swipeCard,
         {
-          transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }],
+          transform: [{ translateX: position.x }, { rotate }],
         },
       ]}
     >

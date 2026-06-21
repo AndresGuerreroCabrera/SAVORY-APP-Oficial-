@@ -16,7 +16,8 @@ import {
   placeFromSearchResult,
   placeFromDetails,
 } from "../../services/googlePlaces";
-import { getGoogleMapsUrl } from "../../services/restaurantLinks";
+import { getCurrentUserGroupRestaurantPins, type GroupRestaurantPin } from "../../services/groups";
+import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl } from "../../services/restaurantLinks";
 import { getCurrentUserSavedRestaurantPins } from "../../services/savedRestaurants";
 import type { SavedRestaurantRecord } from "../../types/restaurant";
 import type { SavoryPlace } from "../../types/place";
@@ -27,7 +28,16 @@ const MIN_SEARCH_LENGTH = 2;
 const SEARCH_RADII_METERS = [1500, 5000, 15000, 50000] as const;
 const MAX_SEARCH_RESULTS = 12;
 const LocateIcon = LocateFixed as SavoryIconGlyph;
-type SavedPinFilter = "all" | "visited" | "want_to_go";
+type SavedPinFilter = "all" | "visited" | "want_to_go" | "groups";
+type MapRestaurantPin =
+  | {
+      kind: "personal";
+      restaurant: SavedRestaurantRecord;
+    }
+  | {
+      kind: "group";
+      restaurant: GroupRestaurantPin;
+    };
 
 function dedupePlaces(places: SavoryPlace[]) {
   const seen = new Set<string>();
@@ -134,6 +144,14 @@ function getSavedPinColor(restaurant: SavedRestaurantRecord) {
   return restaurant.visibility === "public" ? "#1A73E8" : "#D93025";
 }
 
+function getMapPinColor(pin: MapRestaurantPin) {
+  if (pin.kind === "group") {
+    return "#16A34A";
+  }
+
+  return getSavedPinColor(pin.restaurant);
+}
+
 function createSavedPinIcon(color: string): google.maps.Symbol {
   return {
     anchor: new google.maps.Point(0, -1),
@@ -182,7 +200,7 @@ export default function SavoryMap() {
   const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const controlWidth = Math.min(overlayWidth, 430);
-  const pinFilterWidth = Math.min(overlayWidth, 520);
+  const pinFilterWidth = Math.min(overlayWidth, 560);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,7 +277,7 @@ export default function SavoryMap() {
     };
   }, [apiKey]);
 
-  const drawSavedRestaurantPins = useCallback((savedRestaurants: SavedRestaurantRecord[]) => {
+  const drawSavedRestaurantPins = useCallback((pins: MapRestaurantPin[]) => {
     const map = mapRef.current;
 
     if (!map) {
@@ -279,11 +297,21 @@ export default function SavoryMap() {
       savedInfoWindowRef.current = new google.maps.InfoWindow(infoWindowOptions);
     }
 
-    const visibleRestaurants = savedRestaurants.filter(
-      (restaurant) => savedPinFilter === "all" || restaurant.status === savedPinFilter,
-    );
+    const visiblePins = pins.filter((pin) => {
+      if (savedPinFilter === "all") {
+        return true;
+      }
 
-    for (const restaurant of visibleRestaurants) {
+      if (savedPinFilter === "groups") {
+        return pin.kind === "group";
+      }
+
+      return pin.kind === "personal" && pin.restaurant.status === savedPinFilter;
+    });
+
+    for (const pin of visiblePins) {
+      const { restaurant } = pin;
+
       if (restaurant.location_lat == null || restaurant.location_lng == null) {
         continue;
       }
@@ -293,7 +321,7 @@ export default function SavoryMap() {
         lng: restaurant.location_lng,
       };
       const marker = new google.maps.Marker({
-        icon: createSavedPinIcon(getSavedPinColor(restaurant)),
+        icon: createSavedPinIcon(getMapPinColor(pin)),
         map,
         optimized: true,
         position,
@@ -308,11 +336,66 @@ export default function SavoryMap() {
           name: restaurant.name,
           placeId: restaurant.google_place_id,
         });
+        const phoneUrl = restaurant.phone ? getPhoneUrl(restaurant.phone) : null;
+        const websiteUrl = restaurant.website ? getWebsiteUrl(restaurant.website) : null;
+        const groupUrl = pin.kind === "group" ? `/group/${encodeURIComponent(pin.restaurant.group_id)}` : null;
+        const groupMeta =
+          pin.kind === "group"
+            ? `
+              <div style="margin-top: 8px;">
+                <span style="
+                  color: #777B80;
+                  display: block;
+                  font-size: 11px;
+                  font-weight: 850;
+                  line-height: 14px;
+                  text-transform: uppercase;
+                ">Grupo</span>
+                <a href="${groupUrl}" style="
+                  color: #16A34A;
+                  display: inline-block;
+                  font-size: 12px;
+                  font-weight: 850;
+                  line-height: 16px;
+                  max-width: 190px;
+                  text-decoration: underline;
+                ">${escapeHtml(pin.restaurant.group_name)}</a>
+              </div>
+              <div style="
+                color: #2C2E31;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 8px;
+              ">
+                <span style="
+                  background: #ECFDF3;
+                  border: 1px solid #BBF7D0;
+                  border-radius: 999px;
+                  color: #166534;
+                  font-size: 11px;
+                  font-weight: 850;
+                  line-height: 14px;
+                  padding: 4px 8px;
+                ">${restaurant.status === "visited" ? "Visitado" : "Deseado"}</span>
+                <span style="
+                  background: #FFF0EE;
+                  border: 1px solid #FFDAD5;
+                  border-radius: 999px;
+                  color: #2C2E31;
+                  font-size: 11px;
+                  font-weight: 850;
+                  line-height: 14px;
+                  padding: 4px 8px;
+                ">${restaurant.visibility === "public" ? "Público" : "Privado"}</span>
+              </div>
+            `
+            : "";
         const content = `
           <div style="
             box-sizing: border-box;
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            max-width: 210px;
+            max-width: 220px;
             padding: 2px 0;
           ">
             <strong style="
@@ -322,7 +405,7 @@ export default function SavoryMap() {
               font-weight: 850;
               line-height: 17px;
               margin-bottom: 7px;
-              max-width: 190px;
+              max-width: 200px;
             ">${escapeHtml(restaurant.name)}</strong>
             ${
               restaurant.address
@@ -332,11 +415,48 @@ export default function SavoryMap() {
                     font-size: 12px;
                     font-weight: 800;
                     line-height: 16px;
-                    max-width: 190px;
+                    max-width: 200px;
                     text-decoration: underline;
                   ">${escapeHtml(restaurant.address)}</a>`
                 : ""
             }
+            ${
+              phoneUrl || websiteUrl
+                ? `<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+                    ${
+                      phoneUrl
+                        ? `<a href="${phoneUrl}" style="
+                            background: #FFFFFF;
+                            border: 1px solid #E7E7E2;
+                            border-radius: 999px;
+                            color: #FF6B5F;
+                            font-size: 12px;
+                            font-weight: 850;
+                            line-height: 16px;
+                            padding: 5px 8px;
+                            text-decoration: none;
+                          ">${escapeHtml(restaurant.phone ?? "")}</a>`
+                        : ""
+                    }
+                    ${
+                      websiteUrl
+                        ? `<a href="${websiteUrl}" target="_blank" rel="noreferrer" style="
+                            background: #FFFFFF;
+                            border: 1px solid #E7E7E2;
+                            border-radius: 999px;
+                            color: #FF6B5F;
+                            font-size: 12px;
+                            font-weight: 850;
+                            line-height: 16px;
+                            padding: 5px 8px;
+                            text-decoration: none;
+                          ">Web</a>`
+                        : ""
+                    }
+                  </div>`
+                : ""
+            }
+            ${groupMeta}
           </div>
         `;
 
@@ -356,15 +476,18 @@ export default function SavoryMap() {
     let active = true;
 
     async function loadSavedPins() {
-      const { data, error } = await getCurrentUserSavedRestaurantPins();
+      const [personalPins, groupPins] = await Promise.all([
+        getCurrentUserSavedRestaurantPins(),
+        getCurrentUserGroupRestaurantPins(),
+      ]);
 
       if (active) {
-        if (error) {
-          drawSavedRestaurantPins([]);
-          return;
-        }
+        const mapPins: MapRestaurantPin[] = [
+          ...(personalPins.error ? [] : personalPins.data.map((restaurant) => ({ kind: "personal" as const, restaurant }))),
+          ...(groupPins.error ? [] : groupPins.data.map((restaurant) => ({ kind: "group" as const, restaurant }))),
+        ];
 
-        drawSavedRestaurantPins(data);
+        drawSavedRestaurantPins(mapPins);
       }
     }
 
@@ -670,6 +793,11 @@ export default function SavoryMap() {
             label="Deseados"
             onPress={() => setSavedPinFilter("want_to_go")}
           />
+          <PinFilterButton
+            active={savedPinFilter === "groups"}
+            label="Grupos"
+            onPress={() => setSavedPinFilter("groups")}
+          />
         </View>
       </View>
 
@@ -791,7 +919,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 6,
-    minWidth: 306,
+    minWidth: 340,
     padding: 4,
     shadowColor: "#111214",
     shadowOffset: { width: 0, height: 8 },
@@ -805,7 +933,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 34,
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
   pinFilterButtonActive: {
     backgroundColor: theme.colors.coral,

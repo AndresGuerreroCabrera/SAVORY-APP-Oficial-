@@ -388,9 +388,6 @@ function RestaurantFoldedCard({
           {cuisineTypes.join(", ")}
         </Text>
       ) : null}
-      <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.expandButton, pressed && styles.pressed]}>
-        <Text style={styles.expandButtonText}>Ver detalles</Text>
-      </Pressable>
       {onEdit || onMarkVisited || onDelete ? (
         <View style={styles.cardActions}>
           {onEdit ? <ActionButton icon={EditIcon} label="Editar" onPress={onEdit} /> : null}
@@ -930,22 +927,6 @@ const styles = StyleSheet.create({
   },
   cardMainButton: {
     borderRadius: theme.radius.md,
-  },
-  expandButton: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: theme.colors.text,
-    borderRadius: theme.radius.pill,
-    height: 34,
-    justifyContent: "center",
-    marginTop: 2,
-    paddingHorizontal: 13,
-  },
-  expandButtonText: {
-    color: theme.colors.white,
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 16,
   },
   cardActions: {
     flexDirection: "row",
