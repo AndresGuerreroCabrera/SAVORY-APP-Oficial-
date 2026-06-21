@@ -436,13 +436,15 @@ export function RestaurantSaveSheet({
           <>
             <TargetChoice value={saveTarget} onChange={setSaveTarget} />
             {saveTarget === "group" ? (
-              <GroupPicker
-                error={groupsError}
-                groups={groups}
-                loading={loadingGroups}
-                selectedGroupId={selectedGroupId}
-                onSelect={setSelectedGroupId}
-              />
+              <View style={styles.inlineGroupPicker}>
+                <GroupPicker
+                  error={groupsError}
+                  groups={groups}
+                  loading={loadingGroups}
+                  selectedGroupId={selectedGroupId}
+                  onSelect={setSelectedGroupId}
+                />
+              </View>
             ) : null}
           </>
         )}
@@ -683,7 +685,6 @@ function GroupPicker({ error, groups, loading, onSelect, selectedGroupId }: Grou
                 <Text numberOfLines={1} style={styles.groupChoiceName}>
                   {group.name}
                 </Text>
-                <Text style={styles.groupChoiceMeta}>{group.member_count} usuarios</Text>
               </View>
             </Pressable>
           );
@@ -1120,24 +1121,30 @@ const styles = StyleSheet.create({
     color: theme.colors.white,
   },
   groupPickerScroll: {
-    maxHeight: 86,
+    height: 58,
+    maxHeight: 58,
+  },
+  inlineGroupPicker: {
+    marginBottom: 2,
   },
   groupPickerContent: {
+    alignItems: "center",
     flexDirection: "row",
-    gap: 9,
+    gap: 8,
     paddingVertical: 2,
   },
   groupChoice: {
     alignItems: "center",
     backgroundColor: theme.colors.white,
     borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.pill,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 9,
-    minHeight: 70,
-    padding: 10,
-    width: 190,
+    gap: 8,
+    height: 52,
+    maxWidth: 210,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   groupChoiceSelected: {
     backgroundColor: theme.colors.coralSoft,
@@ -1146,38 +1153,31 @@ const styles = StyleSheet.create({
   groupChoiceAvatar: {
     backgroundColor: theme.colors.surfaceSoft,
     borderRadius: theme.radius.pill,
-    height: 42,
-    width: 42,
+    height: 34,
+    width: 34,
   },
   groupChoiceAvatarFallback: {
     alignItems: "center",
     backgroundColor: theme.colors.coralSoft,
     borderRadius: theme.radius.pill,
-    height: 42,
+    height: 34,
     justifyContent: "center",
-    width: 42,
+    width: 34,
   },
   groupChoiceInitial: {
     color: theme.colors.coral,
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "900",
   },
   groupChoiceTextBlock: {
-    flex: 1,
-    gap: 2,
+    maxWidth: 140,
     minWidth: 0,
   },
   groupChoiceName: {
     color: theme.colors.text,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "900",
-    lineHeight: 17,
-  },
-  groupChoiceMeta: {
-    color: theme.colors.muted,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
+    lineHeight: 16,
   },
   groupPickerState: {
     alignItems: "center",

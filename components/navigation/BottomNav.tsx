@@ -85,8 +85,8 @@ const styles = StyleSheet.create({
     ...floatingShadow,
     alignItems: "center",
     alignSelf: "center",
-    backgroundColor: theme.colors.surfaceGlass,
-    borderColor: theme.colors.border,
+    backgroundColor: "rgba(255, 255, 255, 0.64)",
+    borderColor: "rgba(231, 231, 226, 0.62)",
     borderRadius: theme.radius.xl,
     borderWidth: 1,
     flexDirection: "row",
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     width: 52,
   },
   itemActive: {
-    backgroundColor: theme.colors.coralSoft,
+    backgroundColor: "rgba(255, 240, 238, 0.78)",
   },
   itemPressed: {
     opacity: 0.62,
