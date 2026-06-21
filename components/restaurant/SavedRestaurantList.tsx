@@ -880,18 +880,20 @@ function PhotoStrip({ photos }: PhotoStripProps) {
                   <Image source={{ uri: photo.dataUrl }} style={styles.photoImage} />
                 </Pressable>
               ) : null}
-              <Text numberOfLines={2} style={styles.photoCaption}>
-                {photo.caption || photo.fileName || "Foto"}
-              </Text>
+              {photo.caption?.trim() ? (
+                <Text numberOfLines={2} style={styles.photoCaption}>
+                  {photo.caption.trim()}
+                </Text>
+              ) : null}
             </View>
           ))}
         </View>
       </ScrollView>
       <ImageLightbox
-        caption={selectedPhoto?.caption || selectedPhoto?.fileName || null}
+        caption={selectedPhoto?.caption?.trim() || null}
         imageUri={selectedPhoto?.dataUrl ?? null}
         onClose={() => setSelectedPhoto(null)}
-        title={selectedPhoto?.caption || selectedPhoto?.fileName || "Foto"}
+        title={selectedPhoto?.caption?.trim() || "Foto"}
         visible={Boolean(selectedPhoto?.dataUrl)}
       />
     </>

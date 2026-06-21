@@ -1,6 +1,8 @@
-import { ChevronDown } from "lucide-react-native";
+import { SlidersHorizontal } from "lucide-react-native";
+import type { ReactNode } from "react";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import type { TextStyle } from "react-native";
 
 import { CUISINE_TYPES, OCCASION_TYPES, PRICE_RANGES } from "../../constants/restaurantOptions";
 import { theme } from "../../constants/theme";
@@ -8,16 +10,33 @@ import { trackAppEvent } from "../../services/appAnalytics";
 import type { RestaurantFilters } from "../../types/restaurant";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
-const ChevronIcon = ChevronDown as SavoryIconGlyph;
+const SlidersIcon = SlidersHorizontal as SavoryIconGlyph;
+const webInputReset: TextStyle & {
+  boxShadow?: string;
+  caretColor?: string;
+  cursor?: string;
+  outline?: string;
+  outlineColor?: string;
+  outlineWidth?: number;
+} = {
+  boxShadow: "none",
+  caretColor: theme.colors.text,
+  cursor: "text",
+  outline: "none",
+  outlineColor: "transparent",
+  outlineWidth: 0,
+};
+const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
 
 type FiltersDropdownProps = {
+  children?: ReactNode;
   filters: RestaurantFilters;
   includeVisibility?: boolean;
   width: number;
   onChange: (filters: RestaurantFilters) => void;
 };
 
-export function FiltersDropdown({ filters, includeVisibility, onChange, width }: FiltersDropdownProps) {
+export function FiltersDropdown({ children, filters, includeVisibility, onChange, width }: FiltersDropdownProps) {
   const [open, setOpen] = useState(false);
   const [cuisineQuery, setCuisineQuery] = useState("");
   const [occasionQuery, setOccasionQuery] = useState("");
@@ -30,6 +49,7 @@ export function FiltersDropdown({ filters, includeVisibility, onChange, width }:
   return (
     <View style={[styles.container, { width }]}>
       <Pressable
+        accessibilityLabel={open ? "Cerrar filtros" : "Abrir filtros"}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         onPress={() => {
@@ -47,14 +67,19 @@ export function FiltersDropdown({ filters, includeVisibility, onChange, width }:
             return nextOpen;
           });
         }}
-        style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.trigger, open && styles.triggerOpen, pressed && styles.pressed]}
       >
-        <Text style={styles.triggerText}>Filtros{activeCount > 0 ? ` (${activeCount})` : ""}</Text>
-        <SavoryIcon color={theme.colors.coral} glyph={ChevronIcon} size={19} strokeWidth={2.2} />
+        <SavoryIcon color={open ? theme.colors.white : theme.colors.text} glyph={SlidersIcon} size={22} strokeWidth={2.3} />
+        {activeCount > 0 ? (
+          <View style={styles.activeBadge}>
+            <Text style={styles.activeBadgeText}>{activeCount}</Text>
+          </View>
+        ) : null}
       </Pressable>
 
       {open ? (
         <View style={styles.optionsPanel}>
+          {children ? <View style={styles.extraContent}>{children}</View> : null}
           <FilterSection
             items={CUISINE_TYPES}
             onQueryChange={setCuisineQuery}
@@ -140,7 +165,7 @@ function FilterSection({ items, onQueryChange, onToggle, query, selected, title 
         placeholder={`Buscar ${title.toLowerCase()}`}
         placeholderTextColor={theme.colors.faint}
         selectionColor={theme.colors.text}
-        style={styles.searchInput}
+        style={[styles.searchInput, inputPlatformStyle]}
         value={query}
       />
       <ScrollView nestedScrollEnabled style={styles.chipScroll}>
@@ -196,34 +221,55 @@ function normalizeOptionText(value: string) {
 
 const styles = StyleSheet.create({
   container: {
+    alignItems: "flex-end",
     gap: 8,
   },
   trigger: {
     alignItems: "center",
     backgroundColor: theme.colors.surfaceGlass,
-    borderColor: theme.colors.border,
-    borderLeftColor: theme.colors.coral,
-    borderLeftWidth: 3,
-    borderRadius: theme.radius.sm,
+    borderColor: "#FFDAD5",
+    borderRadius: theme.radius.lg,
     borderWidth: 1,
-    flexDirection: "row",
-    height: 56,
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
+    height: 54,
+    justifyContent: "center",
+    position: "relative",
+    width: 54,
   },
-  triggerText: {
-    color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: "800",
-    lineHeight: 21,
+  triggerOpen: {
+    backgroundColor: theme.colors.coral,
+    borderColor: theme.colors.coral,
+  },
+  activeBadge: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coral,
+    borderColor: theme.colors.white,
+    borderRadius: theme.radius.pill,
+    borderWidth: 2,
+    height: 22,
+    justifyContent: "center",
+    minWidth: 22,
+    paddingHorizontal: 5,
+    position: "absolute",
+    right: -7,
+    top: -7,
+  },
+  activeBadgeText: {
+    color: theme.colors.white,
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 14,
   },
   optionsPanel: {
+    alignSelf: "stretch",
     backgroundColor: theme.colors.surfaceGlass,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.sm,
     borderWidth: 1,
     gap: 14,
     padding: 12,
+  },
+  extraContent: {
+    gap: 8,
   },
   filterSection: {
     gap: 8,

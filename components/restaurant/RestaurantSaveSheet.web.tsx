@@ -550,10 +550,10 @@ export function RestaurantSaveSheet({
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </View>
       <ImageLightbox
-        caption={previewPhoto?.caption || previewPhoto?.fileName || null}
+        caption={previewPhoto?.caption?.trim() || null}
         imageUri={previewPhoto?.dataUrl ?? null}
         onClose={() => setPreviewPhoto(null)}
-        title={previewPhoto?.caption || previewPhoto?.fileName || "Foto"}
+        title={previewPhoto?.caption?.trim() || "Foto"}
         visible={Boolean(previewPhoto?.dataUrl)}
       />
     </View>

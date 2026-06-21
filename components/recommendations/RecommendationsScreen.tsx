@@ -214,12 +214,12 @@ export function RecommendationsScreen() {
           </View>
 
           <View style={[styles.filtersBlock, { width: contentWidth }]}>
-            <FiltersDropdown filters={filters} onChange={setFilters} width={contentWidth} />
-            <LocationSearchInput
-              locationFilter={locationFilter}
-              onChange={setLocationFilter}
-              width={contentWidth}
-            />
+            <FiltersDropdown filters={filters} onChange={setFilters} width={contentWidth}>
+              <LocationSearchInput
+                locationFilter={locationFilter}
+                onChange={setLocationFilter}
+              />
+            </FiltersDropdown>
           </View>
 
           {loading ? (
@@ -310,10 +310,10 @@ export function RecommendationsScreen() {
       </Modal>
 
       <ImageLightbox
-        caption={previewPhoto?.caption || previewPhoto?.fileName || null}
+        caption={previewPhoto?.caption?.trim() || null}
         imageUri={previewPhoto?.dataUrl ?? null}
         onClose={() => setPreviewPhoto(null)}
-        title={previewPhoto?.caption || previewPhoto?.fileName || "Foto"}
+        title={previewPhoto?.caption?.trim() || "Foto"}
         visible={Boolean(previewPhoto?.dataUrl)}
       />
     </View>
@@ -721,7 +721,7 @@ function PhotoStrip({
             style={({ pressed }) => [styles.photoItem, pressed && styles.pressed]}
           >
             {photo.dataUrl ? <Image source={{ uri: photo.dataUrl }} style={styles.photoImage} /> : null}
-            <Text numberOfLines={1} style={styles.photoCaption}>{photo.caption || photo.fileName || "Foto"}</Text>
+            {photo.caption?.trim() ? <Text numberOfLines={1} style={styles.photoCaption}>{photo.caption.trim()}</Text> : null}
           </Pressable>
         ))}
       </View>
@@ -732,10 +732,8 @@ function PhotoStrip({
 function LocationSearchInput({
   locationFilter,
   onChange,
-  width,
 }: {
   locationFilter: RecommendationLocationFilter;
-  width: number;
   onChange: (location: RecommendationLocationFilter) => void;
 }) {
   const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -844,7 +842,7 @@ function LocationSearchInput({
   };
 
   return (
-    <View style={[styles.locationSearch, { width }]}>
+    <View style={styles.locationSearch}>
       <div ref={detailsElementRef} style={{ display: "none" }} />
       {predictions.length > 0 ? (
         <View style={styles.locationDropdown}>
