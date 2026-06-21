@@ -591,6 +591,25 @@ export default function SavoryMap() {
     }
   }, [mapReady, requestUserLocation]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!mapReady || !map) {
+      return;
+    }
+
+    const closeSavedInfoWindow = () => {
+      savedInfoWindowRef.current?.close();
+    };
+    const clickListener = map.addListener("click", closeSavedInfoWindow);
+    const dragListener = map.addListener("dragstart", closeSavedInfoWindow);
+
+    return () => {
+      clickListener.remove();
+      dragListener.remove();
+    };
+  }, [mapReady]);
+
   const focusPlaceOnMap = useCallback((place: SavoryPlace) => {
     if (!place.location || !mapRef.current) {
       return;
