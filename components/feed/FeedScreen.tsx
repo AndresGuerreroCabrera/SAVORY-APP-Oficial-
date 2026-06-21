@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { Bookmark, Users, X } from "lucide-react-native";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -19,6 +19,7 @@ import { floatingShadow, theme } from "../../constants/theme";
 import { getRestaurantFeed, type RestaurantFeedPost } from "../../services/feed";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
 import type { SocialProfile } from "../../services/groups";
+import { recordRestaurantScoreEvent } from "../../services/savoryScore";
 import type { SavoryPlace } from "../../types/place";
 import type { RestaurantPhoto, SavedRestaurantRecord } from "../../types/restaurant";
 import { BottomNav } from "../navigation/BottomNav";
@@ -42,6 +43,7 @@ export function FeedScreen() {
   const [selectedPost, setSelectedPost] = useState<RestaurantFeedPost | null>(null);
   const [savingPost, setSavingPost] = useState<RestaurantFeedPost | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<RestaurantPhoto | null>(null);
+  const seenImpressionPostIdsRef = useRef(new Set<string>());
 
   const loadFeed = useCallback(async () => {
     setLoading(true);
@@ -62,6 +64,26 @@ export function FeedScreen() {
   useEffect(() => {
     void loadFeed();
   }, [loadFeed]);
+
+  useEffect(() => {
+    for (const post of posts.slice(0, 30)) {
+      if (seenImpressionPostIdsRef.current.has(post.id)) {
+        continue;
+      }
+
+      seenImpressionPostIdsRef.current.add(post.id);
+      void recordRestaurantScoreEvent({
+        eventName: "feed_impression",
+        googlePlaceId: post.restaurant.google_place_id,
+        metadata: {
+          feed_source: post.source,
+        },
+        ownerUserIds: [getPostOwnerUserId(post)],
+        restaurantRecordId: post.restaurant.id,
+        source: "feed",
+      });
+    }
+  }, [posts]);
 
   return (
     <View style={styles.screen}>
@@ -134,7 +156,19 @@ export function FeedScreen() {
         {savingPost ? (
           <RestaurantSaveSheet
             onClose={() => setSavingPost(null)}
-            onSaved={loadFeed}
+            onSaved={async () => {
+              await recordRestaurantScoreEvent({
+                eventName: "save_from_feed",
+                googlePlaceId: savingPost.restaurant.google_place_id,
+                metadata: {
+                  feed_source: savingPost.source,
+                },
+                ownerUserIds: [getPostOwnerUserId(savingPost)],
+                restaurantRecordId: savingPost.restaurant.id,
+                source: "feed",
+              });
+              await loadFeed();
+            }}
             place={restaurantToPlace(savingPost.restaurant)}
             width={contentWidth}
           />
@@ -433,6 +467,10 @@ function getParticipantText(members: SocialProfile[]) {
 
   const remaining = Math.max(0, members.length - 1);
   return remaining > 0 ? `${firstMember.username} +${remaining} participantes` : firstMember.username;
+}
+
+function getPostOwnerUserId(post: RestaurantFeedPost) {
+  return post.author?.id ?? post.addedBy?.id ?? post.restaurant.user_id;
 }
 
 function restaurantToPlace(restaurant: SavedRestaurantRecord): SavoryPlace {

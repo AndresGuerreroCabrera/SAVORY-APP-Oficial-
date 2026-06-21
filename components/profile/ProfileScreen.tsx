@@ -24,6 +24,7 @@ import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { floatingShadow, theme } from "../../constants/theme";
 import { compressImageFile } from "../../services/imageCompression";
 import { isSupabaseConfigured, supabase, supabaseStorageKey } from "../../services/supabase";
+import { SavoryScoreSection } from "./SavoryScoreSection";
 
 type AuthMode = "login" | "register";
 type UserProfile = {
@@ -797,6 +798,10 @@ export function ProfileScreen() {
               </View>
             )}
           </View>
+
+          {isSupabaseConfigured && session ? (
+            <SavoryScoreSection contentWidth={contentWidth} currentUserId={session.user.id} />
+          ) : null}
 
           {isSupabaseConfigured && session ? (
             <FriendsConnectorSection contentWidth={contentWidth} session={session} />

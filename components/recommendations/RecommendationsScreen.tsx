@@ -29,6 +29,7 @@ import {
   saveRecommendationToWishlist,
   type RecommendationLocationFilter,
 } from "../../services/recommendations";
+import { recordRestaurantScoreEvent } from "../../services/savoryScore";
 import type {
   RestaurantCommunityVisitor,
   RestaurantFilters,
@@ -121,6 +122,22 @@ export function RecommendationsScreen() {
     void loadRecommendations();
   }, [loadRecommendations]);
 
+  useEffect(() => {
+    if (!activeRecommendation) {
+      return;
+    }
+
+    void recordRestaurantScoreEvent({
+      eventName: "recommendation_impression",
+      googlePlaceId: activeRecommendation.googlePlaceId,
+      metadata: {
+        source: "recommendations",
+      },
+      ownerUserIds: activeRecommendation.ownerUserIds,
+      source: "recommendations",
+    });
+  }, [activeRecommendation]);
+
   const handleSwipe = useCallback(
     async (direction: "left" | "right", recommendation: RestaurantRecommendation) => {
       setMessage(null);
@@ -139,6 +156,16 @@ export function RecommendationsScreen() {
         setDismissedPlaceIds((current) => new Set(current).add(recommendation.googlePlaceId));
         return;
       }
+
+      void recordRestaurantScoreEvent({
+        eventName: "swipe_right",
+        googlePlaceId: recommendation.googlePlaceId,
+        metadata: {
+          source: "recommendations",
+        },
+        ownerUserIds: recommendation.ownerUserIds,
+        source: "recommendations",
+      });
 
       setSaving(true);
       const { alreadyExists, error: saveError } = await saveRecommendationToWishlist(recommendation);

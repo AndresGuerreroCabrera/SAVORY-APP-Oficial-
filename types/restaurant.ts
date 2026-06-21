@@ -83,6 +83,7 @@ export type RestaurantRecommendation = {
   medianRating: number | null;
   name: string;
   occasionTags: string[];
+  ownerUserIds: string[];
   phone: string | null;
   priceRangeMode: string | null;
   reviewCount: number;

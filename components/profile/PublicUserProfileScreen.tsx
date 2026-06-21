@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, useW
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { floatingShadow, theme } from "../../constants/theme";
+import { recordRestaurantScoreEvent } from "../../services/savoryScore";
 import { supabase } from "../../services/supabase";
 import { BottomNav } from "../navigation/BottomNav";
 import { SavedRestaurantList } from "../restaurant/SavedRestaurantList";
@@ -71,6 +72,19 @@ export function PublicUserProfileScreen() {
       active = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+
+    void recordRestaurantScoreEvent({
+      eventName: "profile_view",
+      googlePlaceId: `profile:${profile.id}`,
+      ownerUserIds: [profile.id],
+      source: "public_profile",
+    });
+  }, [profile]);
 
   return (
     <View style={styles.screen}>

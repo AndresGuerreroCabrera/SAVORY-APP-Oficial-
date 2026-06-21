@@ -9,6 +9,7 @@ import { getCurrentUserGroups, saveGroupRestaurant, type GroupSummary } from "..
 import { compressImageFile } from "../../services/imageCompression";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl, openExternalUrl } from "../../services/restaurantLinks";
 import { saveRestaurant } from "../../services/savedRestaurants";
+import { recordRestaurantScoreEventForPublicOwners } from "../../services/savoryScore";
 import { supabase } from "../../services/supabase";
 import type { SavoryPlace } from "../../types/place";
 import type {
@@ -143,6 +144,8 @@ export function RestaurantSaveSheet({
       return;
     }
 
+    const googlePlaceId = place.placeId || place.id;
+
     if (!supabase) {
       setError("Supabase no está configurado.");
       return;
@@ -217,6 +220,15 @@ export function RestaurantSaveSheet({
           ? "Restaurante guardado en tu lista."
           : "Restaurante guardado en Deseados.",
     );
+    void recordRestaurantScoreEventForPublicOwners({
+      eventName: getScoreEventName(status, saveTarget),
+      googlePlaceId,
+      metadata: {
+        save_target: saveTarget,
+        status,
+      },
+      source: saveTarget === "group" ? "shared_list" : "personal_list",
+    });
     await onSaved?.();
     window.setTimeout(onClose, 1000);
   };
@@ -837,6 +849,14 @@ function getSupabaseUiError(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function getScoreEventName(status: SavedRestaurantStatus, saveTarget: SaveTarget) {
+  if (saveTarget === "group") {
+    return "add_to_shared_list";
+  }
+
+  return status === "visited" ? "mark_visited" : "save_generic";
 }
 
 const styles = StyleSheet.create({

@@ -217,6 +217,7 @@ function buildRecommendation(placeId: string, rows: RecommendationSourceRow[]): 
     medianRating: getMedian(ratings),
     name: latest.name,
     occasionTags: topTags(orderedRows.flatMap((row) => stringArray(row.occasion_types)), 3),
+    ownerUserIds: Array.from(new Set(orderedRows.map((row) => row.user_id).filter((id): id is string => Boolean(id)))),
     phone: latest.phone,
     priceRangeMode: getMode(orderedRows.map((row) => row.price_range).filter((value): value is string => Boolean(value))),
     reviewCount: rows.length,

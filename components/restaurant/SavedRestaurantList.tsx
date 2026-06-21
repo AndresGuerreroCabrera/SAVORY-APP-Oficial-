@@ -16,6 +16,7 @@ import {
   getCurrentUserSavedRestaurants,
   getPublicUserVisitedRestaurants,
 } from "../../services/savedRestaurants";
+import { recordRestaurantScoreEvent } from "../../services/savoryScore";
 import type { SavoryPlace } from "../../types/place";
 import type {
   RestaurantCommunitySummary,
@@ -58,6 +59,7 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
   const [visibleVisitorList, setVisibleVisitorList] = useState<RestaurantCommunityVisitor[] | null>(null);
   const [editingRestaurant, setEditingRestaurant] = useState<SavedRestaurantRecord | null>(null);
   const [markingVisitedRestaurant, setMarkingVisitedRestaurant] = useState<SavedRestaurantRecord | null>(null);
+  const [savingProfileRestaurant, setSavingProfileRestaurant] = useState<SavedRestaurantRecord | null>(null);
   const [deletingRestaurantId, setDeletingRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -182,6 +184,7 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
             onDelete={!publicUserId ? () => void handleDeleteRestaurant(record) : undefined}
             onEdit={!isWishlist && !publicUserId ? () => setEditingRestaurant(record) : undefined}
             onMarkVisited={isWishlist && !publicUserId ? () => setMarkingVisitedRestaurant(record) : undefined}
+            onSaveFromProfile={publicUserId ? () => setSavingProfileRestaurant(record) : undefined}
             onPress={() => {
               void trackAppEvent({
                 entityId: record.google_place_id,
@@ -231,6 +234,7 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
                   }
                 : undefined
             }
+            onSaveFromProfile={publicUserId ? () => setSavingProfileRestaurant(selectedRestaurant.record) : undefined}
             record={selectedRestaurant.record}
             summary={selectedRestaurant.summary}
             visitors={selectedRestaurant.visitors ?? []}
@@ -315,6 +319,34 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
           />
         ) : null}
       </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setSavingProfileRestaurant(null)}
+        transparent
+        visible={Boolean(savingProfileRestaurant)}
+      >
+        {savingProfileRestaurant ? (
+          <RestaurantSaveSheet
+            onClose={() => setSavingProfileRestaurant(null)}
+            onSaved={async () => {
+              await recordRestaurantScoreEvent({
+                eventName: "save_from_profile",
+                googlePlaceId: savingProfileRestaurant.google_place_id,
+                metadata: {
+                  source: "public_profile",
+                },
+                ownerUserIds: publicUserId ? [publicUserId] : [],
+                restaurantRecordId: savingProfileRestaurant.id,
+                source: "public_profile",
+              });
+              await loadRestaurants();
+            }}
+            place={recordToPlace(savingProfileRestaurant)}
+            width={contentWidth}
+          />
+        ) : null}
+      </Modal>
     </View>
   );
 }
@@ -330,6 +362,7 @@ type RestaurantFoldedCardProps = {
   onEdit?: () => void;
   onMarkVisited?: () => void;
   onPress: () => void;
+  onSaveFromProfile?: () => void;
   onShowVisitors?: () => void;
 };
 
@@ -339,6 +372,7 @@ function RestaurantFoldedCard({
   onEdit,
   onMarkVisited,
   onPress,
+  onSaveFromProfile,
   onShowVisitors,
   record,
   showVisibility,
@@ -390,8 +424,9 @@ function RestaurantFoldedCard({
           {cuisineTypes.join(", ")}
         </Text>
       ) : null}
-      {onEdit || onMarkVisited || onDelete ? (
+      {onEdit || onMarkVisited || onDelete || onSaveFromProfile ? (
         <View style={styles.cardActions}>
+          {onSaveFromProfile ? <ActionButton label="Guardar" onPress={onSaveFromProfile} /> : null}
           {onEdit ? <ActionButton icon={EditIcon} label="Editar" onPress={onEdit} /> : null}
           {onMarkVisited ? <ActionButton label="Ya he ido" onPress={onMarkVisited} /> : null}
           {onDelete ? (
@@ -415,6 +450,7 @@ type RestaurantDetailOverlayProps = {
   onDelete?: () => void;
   onEdit?: () => void;
   onMarkVisited?: () => void;
+  onSaveFromProfile?: () => void;
   onShowVisitors?: () => void;
 };
 
@@ -424,6 +460,7 @@ function RestaurantDetailOverlay({
   onDelete,
   onEdit,
   onMarkVisited,
+  onSaveFromProfile,
   onShowVisitors,
   record,
   summary,
@@ -468,8 +505,9 @@ function RestaurantDetailOverlay({
           </Pressable>
         </View>
 
-        {onEdit || onMarkVisited || onDelete ? (
+        {onEdit || onMarkVisited || onDelete || onSaveFromProfile ? (
           <View style={styles.detailActions}>
+            {onSaveFromProfile ? <ActionButton label="Guardar" onPress={onSaveFromProfile} /> : null}
             {onEdit ? <ActionButton icon={EditIcon} label="Editar" onPress={onEdit} /> : null}
             {onMarkVisited ? <ActionButton label="Ya he ido" onPress={onMarkVisited} /> : null}
             {onDelete ? (
