@@ -15,7 +15,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: "collapse", label: "Contraer", Icon: ChevronDown as SavoryIconGlyph },
+  { key: "feed", label: "Feed", Icon: ChevronDown as SavoryIconGlyph, route: "/feed" },
   {
     key: "list",
     label: "Lista",
