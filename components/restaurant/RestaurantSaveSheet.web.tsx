@@ -30,6 +30,7 @@ type RestaurantSaveSheetProps = {
   initialRecord?: SavedRestaurantRecord;
   initialStatus?: SavedRestaurantStatus;
   initialTarget?: SaveTarget;
+  startWithGroupPickerOnly?: boolean;
   lockTarget?: boolean;
   lockStatus?: boolean;
   onClose: () => void;
@@ -65,6 +66,7 @@ export function RestaurantSaveSheet({
   initialRecord,
   initialStatus,
   initialTarget,
+  startWithGroupPickerOnly,
   lockTarget,
   lockStatus,
   onSaved,
@@ -87,6 +89,7 @@ export function RestaurantSaveSheet({
   const [generalComment, setGeneralComment] = useState(initialRecord?.general_comment ?? "");
   const [saveTarget, setSaveTarget] = useState<SaveTarget>(initialTarget ?? (groupId ? "group" : "personal"));
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(groupId ?? null);
+  const [showGroupPickerOnly, setShowGroupPickerOnly] = useState(Boolean(startWithGroupPickerOnly && (initialTarget ?? (groupId ? "group" : "personal")) === "group" && !groupId));
   const [groups, setGroups] = useState<GroupSummary[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
@@ -112,7 +115,7 @@ export function RestaurantSaveSheet({
 
         setGroups(data);
 
-        if (!selectedGroupId && data[0]) {
+        if (!showGroupPickerOnly && !selectedGroupId && data[0]) {
           setSelectedGroupId(data[0].id);
         }
 
@@ -134,7 +137,7 @@ export function RestaurantSaveSheet({
     return () => {
       active = false;
     };
-  }, [groupId, saveTarget, selectedGroupId]);
+  }, [groupId, saveTarget, selectedGroupId, showGroupPickerOnly]);
 
   const saveCurrentRestaurant = async () => {
     setError(null);
@@ -342,6 +345,40 @@ export function RestaurantSaveSheet({
 
   const isVisited = status === "visited";
   const isEditingVisited = Boolean(initialRecord && isVisited);
+
+  if (showGroupPickerOnly) {
+    return (
+      <View style={styles.overlay}>
+        <Pressable accessibilityLabel="Cerrar restaurante" onPress={onClose} style={styles.backdrop} />
+        <View style={[styles.sheet, { width }]}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerText}>
+              <Text numberOfLines={2} style={styles.title}>
+                Guardar en grupo
+              </Text>
+              <Text numberOfLines={2} style={styles.groupPickerStateText}>
+                {place.name}
+              </Text>
+            </View>
+            <Pressable accessibilityRole="button" hitSlop={10} onPress={onClose} style={styles.iconButton}>
+              <SavoryIcon color={theme.colors.text} glyph={CloseIcon} size={20} strokeWidth={2.4} />
+            </Pressable>
+          </View>
+          <GroupPicker
+            error={groupsError}
+            groups={groups}
+            loading={loadingGroups}
+            selectedGroupId={selectedGroupId}
+            onSelect={(nextGroupId) => {
+              setSelectedGroupId(nextGroupId);
+              setSaveTarget("group");
+              setShowGroupPickerOnly(false);
+            }}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.overlay}>

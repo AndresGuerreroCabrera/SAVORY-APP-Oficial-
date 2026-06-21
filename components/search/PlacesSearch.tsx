@@ -1,9 +1,11 @@
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+﻿import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { TextStyle } from "react-native";
 import { Search, X } from "lucide-react-native";
+import { useEffect } from "react";
 
 import { floatingShadow, theme } from "../../constants/theme";
 import { trackAppEvent } from "../../services/appAnalytics";
+import type { RestaurantCommunitySummary } from "../../types/restaurant";
 import type { SavoryPlace } from "../../types/place";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
@@ -13,8 +15,10 @@ type PlacesSearchProps = {
   loading: boolean;
   error?: string | null;
   disabled?: boolean;
+  resultSummaries?: Map<string, RestaurantCommunitySummary>;
   width?: number;
   onChangeText: (text: string) => void;
+  onDropdownVisibleChange?: (visible: boolean) => void;
   onSelectPlace: (place: SavoryPlace) => void;
 };
 
@@ -45,15 +49,50 @@ export function PlacesSearch({
   loading,
   error,
   disabled,
+  resultSummaries,
   width,
   onChangeText,
+  onDropdownVisibleChange,
   onSelectPlace,
 }: PlacesSearchProps) {
   const hasQuery = value.trim().length > 0;
   const showDropdown = hasQuery && (loading || Boolean(error) || results.length > 0);
 
+  useEffect(() => {
+    onDropdownVisibleChange?.(showDropdown);
+  }, [onDropdownVisibleChange, showDropdown]);
+
   return (
     <View style={[styles.container, width ? { width } : null]}>
+      <View style={[styles.inputShell, disabled && styles.inputShellDisabled]}>
+        <SavoryIcon color={theme.colors.muted} glyph={SearchIcon} size={19} strokeWidth={2.2} />
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!disabled}
+          onChangeText={onChangeText}
+          placeholder="Busca en Savory"
+          placeholderTextColor={theme.colors.faint}
+          returnKeyType="search"
+          selectionColor={theme.colors.text}
+          style={[styles.input, inputPlatformStyle]}
+          value={value}
+        />
+        {loading ? (
+          <ActivityIndicator color={theme.colors.coral} size="small" />
+        ) : hasQuery ? (
+          <Pressable
+            accessibilityLabel="Borrar busqueda"
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={() => onChangeText("")}
+            style={styles.clearButton}
+          >
+            <SavoryIcon color={theme.colors.muted} glyph={XIcon} size={17} strokeWidth={2.4} />
+          </Pressable>
+        ) : null}
+      </View>
+
       {showDropdown ? (
         <View style={styles.dropdown}>
           {loading ? (
@@ -99,9 +138,12 @@ export function PlacesSearch({
                 >
                   <View style={styles.resultDot} />
                   <View style={styles.resultText}>
-                    <Text numberOfLines={1} style={styles.resultName}>
-                      {place.name}
-                    </Text>
+                    <View style={styles.resultHeader}>
+                      <Text numberOfLines={1} style={styles.resultName}>
+                        {place.name}
+                      </Text>
+                      <CommunitySummaryPills summary={getResultSummary(resultSummaries, place)} />
+                    </View>
                     <Text numberOfLines={1} style={styles.resultMeta}>
                       {[place.category, place.address].filter(Boolean).join(" - ")}
                     </Text>
@@ -113,34 +155,36 @@ export function PlacesSearch({
         </View>
       ) : null}
 
-      <View style={[styles.inputShell, disabled && styles.inputShellDisabled]}>
-        <SavoryIcon color={theme.colors.muted} glyph={SearchIcon} size={19} strokeWidth={2.2} />
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!disabled}
-          onChangeText={onChangeText}
-          placeholder="Busca en Savory"
-          placeholderTextColor={theme.colors.faint}
-          returnKeyType="search"
-          selectionColor={theme.colors.text}
-          style={[styles.input, inputPlatformStyle]}
-          value={value}
-        />
-        {loading ? (
-          <ActivityIndicator color={theme.colors.coral} size="small" />
-        ) : hasQuery ? (
-          <Pressable
-            accessibilityLabel="Borrar búsqueda"
-            accessibilityRole="button"
-            hitSlop={10}
-            onPress={() => onChangeText("")}
-            style={styles.clearButton}
-          >
-            <SavoryIcon color={theme.colors.muted} glyph={XIcon} size={17} strokeWidth={2.4} />
-          </Pressable>
-        ) : null}
-      </View>
+    </View>
+  );
+}
+
+function getResultSummary(resultSummaries: Map<string, RestaurantCommunitySummary> | undefined, place: SavoryPlace) {
+  const key = place.placeId || place.id;
+
+  return key ? resultSummaries?.get(key) ?? null : null;
+}
+
+function CommunitySummaryPills({ summary }: { summary: RestaurantCommunitySummary | null }) {
+  if (!summary || summary.reviewCount === 0) {
+    return null;
+  }
+
+  const cuisine = summary.cuisineTypes[0] ?? null;
+  const rating = summary.medianRating ? `${summary.medianRating.toLocaleString("es-ES", { maximumFractionDigits: 1 })}/10` : null;
+  const items = [cuisine, summary.priceRangeMode, rating].filter((item): item is string => Boolean(item));
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.summaryPills}>
+      {items.slice(0, 3).map((item) => (
+        <View key={item} style={styles.summaryPill}>
+          <Text numberOfLines={1} style={styles.summaryPillText}>{item}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -156,7 +200,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     borderRadius: theme.radius.lg,
     borderWidth: 1,
-    marginBottom: 10,
+    marginTop: 10,
     maxHeight: RESULT_ROW_HEIGHT * VISIBLE_RESULT_ROWS + 16,
     overflow: "hidden",
     paddingVertical: 8,
@@ -204,11 +248,38 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  resultHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
   resultName: {
     color: theme.colors.text,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: "700",
     lineHeight: 20,
+    minWidth: 0,
+  },
+  summaryPills: {
+    flexDirection: "row",
+    gap: 4,
+    maxWidth: "54%",
+  },
+  summaryPill: {
+    backgroundColor: theme.colors.coralSoft,
+    borderColor: "#FFDAD5",
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    maxWidth: 86,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  summaryPillText: {
+    color: theme.colors.textSoft,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 13,
   },
   resultMeta: {
     color: theme.colors.muted,

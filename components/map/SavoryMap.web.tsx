@@ -19,8 +19,8 @@ import {
 } from "../../services/googlePlaces";
 import { getCurrentUserGroupRestaurantPins, type GroupRestaurantPin } from "../../services/groups";
 import { getGoogleMapsUrl, getPhoneUrl, getWebsiteUrl } from "../../services/restaurantLinks";
-import { getCurrentUserSavedRestaurantPins } from "../../services/savedRestaurants";
-import type { SavedRestaurantRecord } from "../../types/restaurant";
+import { getCommunitySummaries, getCurrentUserSavedRestaurantPins } from "../../services/savedRestaurants";
+import type { RestaurantCommunitySummary, SavedRestaurantRecord } from "../../types/restaurant";
 import type { SavoryPlace } from "../../types/place";
 
 const DEFAULT_CENTER = { lat: 40.4168, lng: -3.7038 };
@@ -165,6 +165,38 @@ function createSavedPinIcon(color: string): google.maps.Symbol {
   };
 }
 
+function easeInOutCubic(value: number) {
+  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
+}
+
+function smoothPanTo(map: google.maps.Map, target: google.maps.LatLngLiteral, duration = 650) {
+  const center = map.getCenter();
+
+  if (!center) {
+    map.panTo(target);
+    return;
+  }
+
+  const start = { lat: center.lat(), lng: center.lng() };
+  const startedAt = performance.now();
+
+  const animate = (now: number) => {
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const eased = easeInOutCubic(progress);
+
+    map.setCenter({
+      lat: start.lat + (target.lat - start.lat) * eased,
+      lng: start.lng + (target.lng - start.lng) * eased,
+    });
+
+    if (progress < 1) {
+      window.requestAnimationFrame(animate);
+    }
+  };
+
+  window.requestAnimationFrame(animate);
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -192,6 +224,8 @@ export default function SavoryMap() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SavoryPlace[]>([]);
+  const [resultSummaries, setResultSummaries] = useState<Map<string, RestaurantCommunitySummary>>(new Map());
+  const [searchResultsVisible, setSearchResultsVisible] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<SavoryPlace | null>(null);
@@ -545,8 +579,10 @@ export default function SavoryMap() {
       userAccuracyCircleRef.current.setRadius(Math.max(24, Math.min(accuracy ?? 80, 350)));
 
       if (shouldCenter) {
-        mapRef.current.panTo(position);
-        mapRef.current.setZoom(15);
+        smoothPanTo(mapRef.current, position);
+        window.setTimeout(() => {
+          mapRef.current?.setZoom(15);
+        }, 420);
       }
     },
     [],
@@ -697,6 +733,13 @@ export default function SavoryMap() {
       }
 
       setResults(nextResults);
+      const nextSummaries = await getCommunitySummaries(nextResults.map((place) => place.placeId || place.id));
+
+      if (searchRequestRef.current !== requestId) {
+        return;
+      }
+
+      setResultSummaries(nextSummaries);
       void trackAppEvent({
         eventName: "restaurant_searched",
         metadata: {
@@ -711,6 +754,7 @@ export default function SavoryMap() {
     } catch {
       if (searchRequestRef.current === requestId) {
         setResults([]);
+        setResultSummaries(new Map());
         void trackAppEvent({
           eventName: "restaurant_search_failed",
           metadata: {
@@ -733,6 +777,7 @@ export default function SavoryMap() {
 
     if (trimmedQuery.length < MIN_SEARCH_LENGTH || selectedPlace?.name === trimmedQuery) {
       setResults([]);
+      setResultSummaries(new Map());
       setSearchError(null);
       setIsSearching(false);
       return;
@@ -756,6 +801,7 @@ export default function SavoryMap() {
       Keyboard.dismiss();
       setQuery(place.name);
       setResults([]);
+      setResultSummaries(new Map());
       setSearchError(null);
 
       if (!detailsService || !place.placeId) {
@@ -851,29 +897,33 @@ export default function SavoryMap() {
           error={searchError}
           loading={isSearching}
           onChangeText={handleQueryChange}
+          onDropdownVisibleChange={setSearchResultsVisible}
           onSelectPlace={handleSelectPlace}
           results={results}
+          resultSummaries={resultSummaries}
           value={query}
           width={controlWidth}
         />
-        <View style={[styles.pinFilter, { width: pinFilterWidth }]}>
-          <PinFilterButton active={savedPinFilter === "all"} label="Todos" onPress={() => setSavedPinFilter("all")} />
-          <PinFilterButton
-            active={savedPinFilter === "visited"}
-            label="Visitados"
-            onPress={() => setSavedPinFilter("visited")}
-          />
-          <PinFilterButton
-            active={savedPinFilter === "want_to_go"}
-            label="Deseados"
-            onPress={() => setSavedPinFilter("want_to_go")}
-          />
-          <PinFilterButton
-            active={savedPinFilter === "groups"}
-            label="Grupos"
-            onPress={() => setSavedPinFilter("groups")}
-          />
-        </View>
+        {searchResultsVisible ? null : (
+          <View style={[styles.pinFilter, { width: pinFilterWidth }]}>
+            <PinFilterButton active={savedPinFilter === "all"} label="Todos" onPress={() => setSavedPinFilter("all")} />
+            <PinFilterButton
+              active={savedPinFilter === "visited"}
+              label="Visitados"
+              onPress={() => setSavedPinFilter("visited")}
+            />
+            <PinFilterButton
+              active={savedPinFilter === "want_to_go"}
+              label="Deseados"
+              onPress={() => setSavedPinFilter("want_to_go")}
+            />
+            <PinFilterButton
+              active={savedPinFilter === "groups"}
+              label="Grupos"
+              onPress={() => setSavedPinFilter("groups")}
+            />
+          </View>
+        )}
       </View>
 
       <View pointerEvents="box-none" style={styles.bottomOverlay}>

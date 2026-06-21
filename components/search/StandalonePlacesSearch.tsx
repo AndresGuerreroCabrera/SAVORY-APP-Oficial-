@@ -2,6 +2,8 @@ import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isFoodRelatedPlace, normalizeAutocompletePrediction, placeFromDetails } from "../../services/googlePlaces";
+import { getCommunitySummaries } from "../../services/savedRestaurants";
+import type { RestaurantCommunitySummary } from "../../types/restaurant";
 import type { SavoryPlace } from "../../types/place";
 import { PlacesSearch } from "./PlacesSearch";
 
@@ -21,6 +23,7 @@ export function StandalonePlacesSearch({ onSelectPlace, width }: StandalonePlace
   const detailsServiceRef = useRef<google.maps.places.PlacesService | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SavoryPlace[]>([]);
+  const [resultSummaries, setResultSummaries] = useState<Map<string, RestaurantCommunitySummary>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +70,7 @@ export function StandalonePlacesSearch({ onSelectPlace, width }: StandalonePlace
 
     if (normalizedQuery.length < MIN_SEARCH_LENGTH) {
       setResults([]);
+      setResultSummaries(new Map());
       setLoading(false);
       setError(null);
       return;
@@ -88,7 +92,7 @@ export function StandalonePlacesSearch({ onSelectPlace, width }: StandalonePlace
           input: normalizedQuery,
           types: ["establishment"],
         },
-        (predictions, status) => {
+        async (predictions, status) => {
           if (!active) {
             return;
           }
@@ -97,18 +101,26 @@ export function StandalonePlacesSearch({ onSelectPlace, width }: StandalonePlace
 
           if (status === "ZERO_RESULTS") {
             setResults([]);
+            setResultSummaries(new Map());
             return;
           }
 
           if (status !== "OK" || !predictions) {
             setError("No se pudieron buscar restaurantes.");
             setResults([]);
+            setResultSummaries(new Map());
             return;
           }
 
           const normalized = predictions.map(normalizeAutocompletePrediction);
           const foodResults = normalized.filter(isFoodRelatedPlace);
-          setResults((foodResults.length > 0 ? foodResults : normalized).slice(0, MAX_SEARCH_RESULTS));
+          const nextResults = (foodResults.length > 0 ? foodResults : normalized).slice(0, MAX_SEARCH_RESULTS);
+          setResults(nextResults);
+          const nextSummaries = await getCommunitySummaries(nextResults.map((place) => place.placeId || place.id));
+
+          if (active) {
+            setResultSummaries(nextSummaries);
+          }
         },
       );
     }, SEARCH_DEBOUNCE_MS);
@@ -167,6 +179,7 @@ export function StandalonePlacesSearch({ onSelectPlace, width }: StandalonePlace
         onChangeText={setQuery}
         onSelectPlace={handleSelectPlace}
         results={results}
+        resultSummaries={resultSummaries}
         value={query}
         width={width}
       />

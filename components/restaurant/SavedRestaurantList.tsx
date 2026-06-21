@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ChevronRight, Edit3, Trash2, X } from "lucide-react-native";
+import { ChevronRight, Edit3, Plus, Trash2, X } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -48,6 +48,7 @@ type SelectedRestaurant = {
 const CloseIcon = X as SavoryIconGlyph;
 const EditIcon = Edit3 as SavoryIconGlyph;
 const NextIcon = ChevronRight as SavoryIconGlyph;
+const PlusIcon = Plus as SavoryIconGlyph;
 const TrashIcon = Trash2 as SavoryIconGlyph;
 
 export function SavedRestaurantList({ contentWidth, filters, groupId, publicUserId, status }: SavedRestaurantListProps) {
@@ -60,6 +61,7 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
   const [editingRestaurant, setEditingRestaurant] = useState<SavedRestaurantRecord | null>(null);
   const [markingVisitedRestaurant, setMarkingVisitedRestaurant] = useState<SavedRestaurantRecord | null>(null);
   const [savingProfileRestaurant, setSavingProfileRestaurant] = useState<SavedRestaurantRecord | null>(null);
+  const [sharingRestaurant, setSharingRestaurant] = useState<SavedRestaurantRecord | null>(null);
   const [deletingRestaurantId, setDeletingRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +185,7 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
             key={record.id}
             onDelete={!publicUserId ? () => void handleDeleteRestaurant(record) : undefined}
             onEdit={!isWishlist && !publicUserId ? () => setEditingRestaurant(record) : undefined}
+            onAddToShared={!publicUserId && !groupId ? () => setSharingRestaurant(record) : undefined}
             onMarkVisited={isWishlist && !publicUserId ? () => setMarkingVisitedRestaurant(record) : undefined}
             onSaveFromProfile={publicUserId ? () => setSavingProfileRestaurant(record) : undefined}
             onPress={() => {
@@ -220,6 +223,14 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
             deleting={deletingRestaurantId === selectedRestaurant.record.id}
             onClose={() => setSelectedRestaurant(null)}
             onDelete={!publicUserId ? () => void handleDeleteRestaurant(selectedRestaurant.record) : undefined}
+            onAddToShared={
+              !publicUserId && !groupId
+                ? () => {
+                    setSharingRestaurant(selectedRestaurant.record);
+                    setSelectedRestaurant(null);
+                  }
+                : undefined
+            }
             onEdit={
               !isWishlist && !publicUserId
                 ? () => {
@@ -324,6 +335,26 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
 
       <Modal
         animationType="fade"
+        onRequestClose={() => setSharingRestaurant(null)}
+        transparent
+        visible={Boolean(sharingRestaurant)}
+      >
+        {sharingRestaurant ? (
+          <RestaurantSaveSheet
+            initialRecord={sharingRestaurant}
+            initialStatus={sharingRestaurant.status}
+            initialTarget="group"
+            startWithGroupPickerOnly
+            onClose={() => setSharingRestaurant(null)}
+            onSaved={loadRestaurants}
+            place={recordToPlace(sharingRestaurant)}
+            width={contentWidth}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
+        animationType="fade"
         onRequestClose={() => setSavingProfileRestaurant(null)}
         transparent
         visible={Boolean(savingProfileRestaurant)}
@@ -370,6 +401,7 @@ type RestaurantFoldedCardProps = {
   useCommunitySummary: boolean;
   visitors: RestaurantCommunityVisitor[];
   onDelete?: () => void;
+  onAddToShared?: () => void;
   onEdit?: () => void;
   onMarkVisited?: () => void;
   onPress: () => void;
@@ -379,6 +411,7 @@ type RestaurantFoldedCardProps = {
 
 function RestaurantFoldedCard({
   deleting,
+  onAddToShared,
   onDelete,
   onEdit,
   onMarkVisited,
@@ -435,8 +468,9 @@ function RestaurantFoldedCard({
           {cuisineTypes.join(", ")}
         </Text>
       ) : null}
-      {onEdit || onMarkVisited || onDelete || onSaveFromProfile ? (
+      {onAddToShared || onEdit || onMarkVisited || onDelete || onSaveFromProfile ? (
         <View style={styles.cardActions}>
+          {onAddToShared ? <ActionButton icon={PlusIcon} label="Grupo" success onPress={onAddToShared} /> : null}
           {onSaveFromProfile ? <ActionButton label="Guardar" onPress={onSaveFromProfile} /> : null}
           {onEdit ? <ActionButton icon={EditIcon} label="Editar" onPress={onEdit} /> : null}
           {onMarkVisited ? <ActionButton label="Ya he ido" onPress={onMarkVisited} /> : null}
@@ -458,6 +492,7 @@ type RestaurantDetailOverlayProps = {
   visitors: RestaurantCommunityVisitor[];
   width: number;
   onClose: () => void;
+  onAddToShared?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
   onMarkVisited?: () => void;
@@ -467,6 +502,7 @@ type RestaurantDetailOverlayProps = {
 
 function RestaurantDetailOverlay({
   deleting,
+  onAddToShared,
   onClose,
   onDelete,
   onEdit,
@@ -516,8 +552,9 @@ function RestaurantDetailOverlay({
           </Pressable>
         </View>
 
-        {onEdit || onMarkVisited || onDelete || onSaveFromProfile ? (
+        {onAddToShared || onEdit || onMarkVisited || onDelete || onSaveFromProfile ? (
           <View style={styles.detailActions}>
+            {onAddToShared ? <ActionButton icon={PlusIcon} label="Grupo" success onPress={onAddToShared} /> : null}
             {onSaveFromProfile ? <ActionButton label="Guardar" onPress={onSaveFromProfile} /> : null}
             {onEdit ? <ActionButton icon={EditIcon} label="Editar" onPress={onEdit} /> : null}
             {onMarkVisited ? <ActionButton label="Ya he ido" onPress={onMarkVisited} /> : null}
@@ -614,6 +651,7 @@ type ActionButtonProps = {
   disabled?: boolean;
   icon?: SavoryIconGlyph;
   label: string;
+  success?: boolean;
   onPress: () => void;
 };
 
@@ -695,7 +733,7 @@ function CommunityVisitorsOverlay({ onClose, onSelectVisitor, visitors, width }:
   );
 }
 
-function ActionButton({ danger, disabled, icon, label, onPress }: ActionButtonProps) {
+function ActionButton({ danger, disabled, icon, label, onPress, success }: ActionButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -707,12 +745,13 @@ function ActionButton({ danger, disabled, icon, label, onPress }: ActionButtonPr
       style={({ pressed }) => [
         styles.actionButton,
         danger && styles.actionButtonDanger,
+        success && styles.actionButtonSuccess,
         disabled && styles.actionButtonDisabled,
         pressed && styles.pressed,
       ]}
     >
-      {icon ? <SavoryIcon color={danger ? theme.colors.danger : theme.colors.text} glyph={icon} size={16} strokeWidth={2.2} /> : null}
-      <Text style={[styles.actionButtonText, danger && styles.actionButtonTextDanger]}>{label}</Text>
+      {icon ? <SavoryIcon color={danger ? theme.colors.danger : success ? "#15803D" : theme.colors.text} glyph={icon} size={16} strokeWidth={2.4} /> : null}
+      <Text style={[styles.actionButtonText, danger && styles.actionButtonTextDanger, success && styles.actionButtonTextSuccess]}>{label}</Text>
     </Pressable>
   );
 }
@@ -1039,6 +1078,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF1F0",
     borderColor: "#FFD1CC",
   },
+  actionButtonSuccess: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
+  },
   actionButtonDisabled: {
     opacity: 0.6,
   },
@@ -1050,6 +1093,9 @@ const styles = StyleSheet.create({
   },
   actionButtonTextDanger: {
     color: theme.colors.danger,
+  },
+  actionButtonTextSuccess: {
+    color: "#15803D",
   },
   visitorsButton: {
     alignItems: "center",
