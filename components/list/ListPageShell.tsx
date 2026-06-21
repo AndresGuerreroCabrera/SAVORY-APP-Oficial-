@@ -26,7 +26,6 @@ export function ListPageShell({ children, hideHeader, title }: ListPageShellProp
         >
           {hideHeader ? null : (
             <View style={[styles.header, { width: contentWidth }]}>
-              <View style={styles.titleAccent} />
               <Text style={styles.title}>{title}</Text>
             </View>
           )}
@@ -59,12 +58,6 @@ const styles = StyleSheet.create({
   header: {
     gap: 8,
     marginBottom: 18,
-  },
-  titleAccent: {
-    backgroundColor: theme.colors.coral,
-    borderRadius: theme.radius.pill,
-    height: 4,
-    width: 34,
   },
   title: {
     color: theme.colors.text,

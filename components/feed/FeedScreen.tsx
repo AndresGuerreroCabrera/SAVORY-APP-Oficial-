@@ -101,8 +101,7 @@ export function FeedScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={[styles.header, { width: contentWidth }]}>
-            <View style={styles.titleAccent} />
-            <Text style={styles.title}>Feed</Text>
+            <Text style={styles.title}>Savory</Text>
           </View>
 
           {loading ? (
@@ -549,12 +548,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 18,
   },
-  titleAccent: {
-    backgroundColor: theme.colors.coral,
-    borderRadius: theme.radius.pill,
-    height: 4,
-    width: 34,
-  },
   title: {
     color: theme.colors.text,
     fontSize: 28,
@@ -570,8 +563,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceGlass,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.xl,
-    borderTopColor: theme.colors.coral,
-    borderTopWidth: 3,
     borderWidth: 1,
     gap: 13,
     padding: 16,

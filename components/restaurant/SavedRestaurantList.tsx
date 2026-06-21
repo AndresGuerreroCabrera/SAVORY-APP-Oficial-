@@ -1005,8 +1005,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceGlass,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.lg,
-    borderTopColor: theme.colors.coral,
-    borderTopWidth: 2,
     borderWidth: 1,
     gap: 8,
     padding: 14,

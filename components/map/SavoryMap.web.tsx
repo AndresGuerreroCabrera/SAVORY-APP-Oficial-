@@ -846,11 +846,16 @@ export default function SavoryMap() {
         </View>
       ) : null}
 
-      <View pointerEvents="none" style={styles.brandOverlay}>
-        <Text style={styles.brand}>Savory</Text>
-      </View>
-
-      <View pointerEvents="box-none" style={styles.pinFilterOverlay}>
+      <View pointerEvents="box-none" style={styles.topOverlay}>
+        <PlacesSearch
+          error={searchError}
+          loading={isSearching}
+          onChangeText={handleQueryChange}
+          onSelectPlace={handleSelectPlace}
+          results={results}
+          value={query}
+          width={controlWidth}
+        />
         <View style={[styles.pinFilter, { width: pinFilterWidth }]}>
           <PinFilterButton active={savedPinFilter === "all"} label="Todos" onPress={() => setSavedPinFilter("all")} />
           <PinFilterButton
@@ -874,7 +879,7 @@ export default function SavoryMap() {
       <View pointerEvents="box-none" style={styles.bottomOverlay}>
         <View style={[styles.locationButtonRow, { width: controlWidth }]}>
           <Pressable
-            accessibilityLabel="Centrar mi ubicación"
+            accessibilityLabel="Centrar mi ubicacion"
             accessibilityRole="button"
             hitSlop={10}
             onPress={() => {
@@ -885,15 +890,6 @@ export default function SavoryMap() {
             <SavoryIcon color={theme.colors.text} glyph={LocateIcon} size={21} strokeWidth={2.3} />
           </Pressable>
         </View>
-        <PlacesSearch
-          error={searchError}
-          loading={isSearching}
-          onChangeText={handleQueryChange}
-          onSelectPlace={handleSelectPlace}
-          results={results}
-          value={query}
-          width={controlWidth}
-        />
         <BottomNav width={controlWidth} />
       </View>
 
@@ -958,26 +954,12 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: "hidden",
   },
-  brandOverlay: {
+  topOverlay: {
     alignItems: "center",
+    gap: 9,
     left: 0,
+    paddingHorizontal: 18,
     paddingTop: 18,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  brand: {
-    color: theme.colors.black,
-    fontSize: 34,
-    fontWeight: "800",
-    letterSpacing: 0,
-    lineHeight: 42,
-    textAlign: "center",
-  },
-  pinFilterOverlay: {
-    alignItems: "center",
-    left: 0,
-    paddingTop: 66,
     position: "absolute",
     right: 0,
     top: 0,
@@ -1029,7 +1011,7 @@ const styles = StyleSheet.create({
     right: 18,
   },
   locationButtonRow: {
-    alignItems: "flex-start",
+    alignItems: "flex-end",
   },
   locationButton: {
     alignItems: "center",

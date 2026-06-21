@@ -202,8 +202,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: theme.colors.surfaceGlass,
     borderColor: theme.colors.border,
-    borderLeftColor: theme.colors.coral,
-    borderLeftWidth: 3,
     borderRadius: theme.radius.lg,
     borderWidth: 1,
     flexDirection: "row",

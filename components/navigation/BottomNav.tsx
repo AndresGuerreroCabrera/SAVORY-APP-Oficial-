@@ -15,6 +15,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { key: "home", label: "Inicio", Icon: Home as SavoryIconGlyph, route: "/" },
   { key: "feed", label: "Feed", Icon: ChevronDown as SavoryIconGlyph, route: "/feed" },
   {
     key: "list",
@@ -23,7 +24,6 @@ const NAV_ITEMS: NavItem[] = [
     route: "/list",
     activePaths: ["/list", "/wishlist", "/groups"],
   },
-  { key: "home", label: "Inicio", Icon: Home as SavoryIconGlyph, route: "/" },
   { key: "grid", label: "Recomendaciones", Icon: Square as SavoryIconGlyph, route: "/recommendations" },
   { key: "profile", label: "Perfil", Icon: UserRound as SavoryIconGlyph, route: "/profile" },
 ];

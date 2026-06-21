@@ -16,24 +16,30 @@ export function ListHubScreen() {
     <ListPageShell hideHeader title="Lista">
       {({ contentWidth }) => (
         <View style={[styles.contentBlock, { width: contentWidth }]}>
-          <View style={styles.buttonRow}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push("/wishlist" as never)}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.actionText}>Deseados</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push("/groups" as never)}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.actionText}>Grupos</Text>
-            </Pressable>
-          </View>
-
-          <FiltersDropdown filters={filters} includeVisibility onChange={setFilters} width={contentWidth} />
+          <FiltersDropdown
+            filters={filters}
+            headerContent={
+              <View style={styles.buttonRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/wishlist" as never)}
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.actionText}>Deseados</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/groups" as never)}
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.actionText}>Grupos</Text>
+                </Pressable>
+              </View>
+            }
+            includeVisibility
+            onChange={setFilters}
+            width={contentWidth}
+          />
           <SavedRestaurantList contentWidth={contentWidth} filters={filters} status="visited" />
         </View>
       )}
@@ -47,23 +53,22 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 8,
   },
   actionButton: {
     alignItems: "center",
     backgroundColor: theme.colors.surfaceGlass,
     borderColor: theme.colors.border,
-    borderRadius: theme.radius.sm,
-    borderTopColor: theme.colors.coral,
-    borderTopWidth: 2,
+    borderRadius: theme.radius.lg,
     borderWidth: 1,
     flex: 1,
-    height: 58,
+    height: 54,
     justifyContent: "center",
+    paddingHorizontal: 8,
   },
   actionText: {
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
     lineHeight: 21,
   },

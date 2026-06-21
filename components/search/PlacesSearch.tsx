@@ -120,7 +120,7 @@ export function PlacesSearch({
           autoCorrect={false}
           editable={!disabled}
           onChangeText={onChangeText}
-          placeholder="Buscar restaurantes, cafeterías, bares..."
+          placeholder="Busca en Savory"
           placeholderTextColor={theme.colors.faint}
           returnKeyType="search"
           selectionColor={theme.colors.text}

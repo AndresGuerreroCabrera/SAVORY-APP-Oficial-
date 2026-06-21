@@ -208,13 +208,13 @@ export function RecommendationsScreen() {
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={[styles.header, { width: contentWidth }]}>
-            <View style={styles.titleAccent} />
-            <Text style={styles.title}>Recomendaciones</Text>
-          </View>
-
           <View style={[styles.filtersBlock, { width: contentWidth }]}>
-            <FiltersDropdown filters={filters} onChange={setFilters} width={contentWidth}>
+            <FiltersDropdown
+              filters={filters}
+              headerContent={<Text numberOfLines={1} style={styles.title}>Recomendaciones</Text>}
+              onChange={setFilters}
+              width={contentWidth}
+            >
               <LocationSearchInput
                 locationFilter={locationFilter}
                 onChange={setLocationFilter}
@@ -931,16 +931,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 22,
   },
-  header: {
-    gap: 8,
-    marginBottom: 14,
-  },
-  titleAccent: {
-    backgroundColor: theme.colors.coral,
-    borderRadius: theme.radius.pill,
-    height: 4,
-    width: 34,
-  },
   title: {
     color: theme.colors.text,
     fontSize: 28,
@@ -948,7 +938,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
   },
   filtersBlock: {
-    gap: 10,
     marginBottom: 14,
   },
   locationSearch: {
@@ -1028,8 +1017,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceGlass,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.xl,
-    borderTopColor: theme.colors.coral,
-    borderTopWidth: 3,
     borderWidth: 1,
     gap: 12,
     overflow: "hidden",

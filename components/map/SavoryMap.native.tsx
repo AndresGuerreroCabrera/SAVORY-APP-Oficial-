@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BottomNav } from "../navigation/BottomNav";
@@ -23,11 +23,7 @@ export default function SavoryMap() {
         <View style={styles.streetLineTertiary} />
       </View>
 
-      <SafeAreaView pointerEvents="none" style={styles.brandOverlay}>
-        <Text style={styles.brand}>Savory</Text>
-      </SafeAreaView>
-
-      <View pointerEvents="box-none" style={styles.bottomOverlay}>
+      <SafeAreaView pointerEvents="box-none" style={styles.topOverlay}>
         <PlacesSearch
           disabled
           loading={false}
@@ -37,6 +33,9 @@ export default function SavoryMap() {
           value={query}
           width={controlWidth}
         />
+      </SafeAreaView>
+
+      <View pointerEvents="box-none" style={styles.bottomOverlay}>
         <BottomNav width={controlWidth} />
       </View>
     </View>
@@ -87,25 +86,17 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "22deg" }],
     width: "116%",
   },
-  brandOverlay: {
+  topOverlay: {
     alignItems: "center",
     left: 0,
+    paddingHorizontal: 18,
     position: "absolute",
     right: 0,
     top: 0,
   },
-  brand: {
-    color: theme.colors.black,
-    fontSize: 34,
-    fontWeight: "800",
-    letterSpacing: 0,
-    lineHeight: 42,
-    textAlign: "center",
-  },
   bottomOverlay: {
     alignItems: "center",
     bottom: 22,
-    gap: 12,
     left: 18,
     position: "absolute",
     right: 18,

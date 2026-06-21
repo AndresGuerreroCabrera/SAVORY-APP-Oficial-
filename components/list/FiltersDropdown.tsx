@@ -31,12 +31,13 @@ const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
 type FiltersDropdownProps = {
   children?: ReactNode;
   filters: RestaurantFilters;
+  headerContent?: ReactNode;
   includeVisibility?: boolean;
   width: number;
   onChange: (filters: RestaurantFilters) => void;
 };
 
-export function FiltersDropdown({ children, filters, includeVisibility, onChange, width }: FiltersDropdownProps) {
+export function FiltersDropdown({ children, filters, headerContent, includeVisibility, onChange, width }: FiltersDropdownProps) {
   const [open, setOpen] = useState(false);
   const [cuisineQuery, setCuisineQuery] = useState("");
   const [occasionQuery, setOccasionQuery] = useState("");
@@ -48,34 +49,37 @@ export function FiltersDropdown({ children, filters, includeVisibility, onChange
 
   return (
     <View style={[styles.container, { width }]}>
-      <Pressable
-        accessibilityLabel={open ? "Cerrar filtros" : "Abrir filtros"}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        onPress={() => {
-          setOpen((current) => {
-            const nextOpen = !current;
+      <View style={styles.triggerRow}>
+        {headerContent ? <View style={styles.headerContent}>{headerContent}</View> : null}
+        <Pressable
+          accessibilityLabel={open ? "Cerrar filtros" : "Abrir filtros"}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          onPress={() => {
+            setOpen((current) => {
+              const nextOpen = !current;
 
-            void trackAppEvent({
-              eventName: nextOpen ? "filters_opened" : "filters_closed",
-              metadata: {
-                active_count: activeCount,
-                include_visibility: Boolean(includeVisibility),
-              },
+              void trackAppEvent({
+                eventName: nextOpen ? "filters_opened" : "filters_closed",
+                metadata: {
+                  active_count: activeCount,
+                  include_visibility: Boolean(includeVisibility),
+                },
+              });
+
+              return nextOpen;
             });
-
-            return nextOpen;
-          });
-        }}
-        style={({ pressed }) => [styles.trigger, open && styles.triggerOpen, pressed && styles.pressed]}
-      >
-        <SavoryIcon color={open ? theme.colors.white : theme.colors.text} glyph={SlidersIcon} size={22} strokeWidth={2.3} />
-        {activeCount > 0 ? (
-          <View style={styles.activeBadge}>
-            <Text style={styles.activeBadgeText}>{activeCount}</Text>
-          </View>
-        ) : null}
-      </Pressable>
+          }}
+          style={({ pressed }) => [styles.trigger, open && styles.triggerOpen, pressed && styles.pressed]}
+        >
+          <SavoryIcon color={open ? theme.colors.white : theme.colors.text} glyph={SlidersIcon} size={22} strokeWidth={2.3} />
+          {activeCount > 0 ? (
+            <View style={styles.activeBadge}>
+              <Text style={styles.activeBadgeText}>{activeCount}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
 
       {open ? (
         <View style={styles.optionsPanel}>
@@ -221,8 +225,17 @@ function normalizeOptionText(value: string) {
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: "flex-end",
     gap: 8,
+  },
+  triggerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "flex-end",
+  },
+  headerContent: {
+    flex: 1,
+    minWidth: 0,
   },
   trigger: {
     alignItems: "center",
