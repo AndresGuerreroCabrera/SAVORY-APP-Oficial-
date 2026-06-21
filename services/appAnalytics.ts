@@ -13,12 +13,36 @@ type TrackAppEventInput = {
   route?: string | null;
 };
 
+type AppEventPayload = {
+  duration_ms: number | null;
+  entity_id: string | null;
+  entity_type: string | null;
+  event_name: string;
+  metadata: AnalyticsMetadata;
+  platform: string;
+  referrer: string | null;
+  route: string | null;
+  session_id: string;
+  user_agent: string | null;
+  user_id: string | null;
+  viewport_height: number | null;
+  viewport_width: number | null;
+};
+
 const SESSION_STORAGE_KEY = "savory.analytics.session_id";
 const FORBIDDEN_METADATA_KEY_PARTS = ["password", "pass", "token", "secret", "key", "authorization", "email"];
 const MAX_METADATA_KEYS = 24;
 const MAX_STRING_LENGTH = 240;
+const MAX_QUEUE_SIZE = 20;
+const FLUSH_DELAY_MS = 900;
+const USER_CACHE_TTL_MS = 30_000;
 
 let cachedSessionId: string | null = null;
+let cachedUserId: string | null = null;
+let cachedUserIdAt = 0;
+let eventQueue: AppEventPayload[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let flushing = false;
 
 export async function trackAppEvent(input: TrackAppEventInput) {
   if (!supabase || !input.eventName.trim()) {
@@ -27,11 +51,10 @@ export async function trackAppEvent(input: TrackAppEventInput) {
 
   try {
     const sessionId = getAnalyticsSessionId();
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData.session?.user.id ?? null;
+    const userId = await getCurrentAnalyticsUserId();
     const browserInfo = getBrowserInfo();
 
-    await supabase.from("app_events").insert({
+    enqueueEvent({
       duration_ms: typeof input.durationMs === "number" ? Math.max(0, Math.round(input.durationMs)) : null,
       entity_id: input.entityId ?? null,
       entity_type: input.entityType ?? null,
@@ -49,6 +72,10 @@ export async function trackAppEvent(input: TrackAppEventInput) {
   } catch {
     // Analytics must never break the product flow.
   }
+}
+
+export async function flushAppAnalytics() {
+  await flushQueuedEvents();
 }
 
 export function getAnalyticsSessionId() {
@@ -124,6 +151,66 @@ function getBrowserInfo() {
     viewportHeight: Number.isFinite(window.innerHeight) ? window.innerHeight : null,
     viewportWidth: Number.isFinite(window.innerWidth) ? window.innerWidth : null,
   };
+}
+
+async function getCurrentAnalyticsUserId() {
+  const now = Date.now();
+
+  if (now - cachedUserIdAt < USER_CACHE_TTL_MS) {
+    return cachedUserId;
+  }
+
+  try {
+    const { data: sessionData } = await supabase!.auth.getSession();
+
+    cachedUserId = sessionData.session?.user.id ?? null;
+    cachedUserIdAt = now;
+    return cachedUserId;
+  } catch {
+    cachedUserId = null;
+    cachedUserIdAt = now;
+    return null;
+  }
+}
+
+function enqueueEvent(payload: AppEventPayload) {
+  eventQueue = [...eventQueue, payload].slice(-MAX_QUEUE_SIZE);
+
+  if (eventQueue.length >= MAX_QUEUE_SIZE) {
+    void flushQueuedEvents();
+    return;
+  }
+
+  scheduleFlush();
+}
+
+function scheduleFlush() {
+  if (flushTimer || typeof setTimeout === "undefined") {
+    return;
+  }
+
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void flushQueuedEvents();
+  }, FLUSH_DELAY_MS);
+}
+
+async function flushQueuedEvents() {
+  if (!supabase || flushing || eventQueue.length === 0) {
+    return;
+  }
+
+  flushing = true;
+  const batch = eventQueue;
+  eventQueue = [];
+
+  try {
+    await supabase.from("app_events").insert(batch);
+  } catch {
+    // Drop analytics failures; product flows must keep working.
+  } finally {
+    flushing = false;
+  }
 }
 
 function sanitizeMetadata(metadata: AnalyticsMetadata) {
