@@ -63,6 +63,34 @@ export type RestaurantCommunityVisitor = {
   username: string;
 };
 
+export type RestaurantRecommendationComment = {
+  comment: string;
+  savedAt: string;
+  user: RestaurantCommunityVisitor;
+};
+
+export type RestaurantRecommendation = {
+  address: string | null;
+  cuisineTags: string[];
+  dishPhotos: RestaurantPhoto[];
+  generalComments: RestaurantRecommendationComment[];
+  googlePlaceId: string;
+  googleTypes: string[];
+  lastGeneralComment: RestaurantRecommendationComment | null;
+  localPhotos: RestaurantPhoto[];
+  locationLat: number | null;
+  locationLng: number | null;
+  medianRating: number | null;
+  name: string;
+  occasionTags: string[];
+  phone: string | null;
+  priceRangeMode: string | null;
+  reviewCount: number;
+  score: number;
+  visitors: RestaurantCommunityVisitor[];
+  website: string | null;
+};
+
 export type RestaurantFilters = {
   cuisineTypes: string[];
   occasionTypes: string[];

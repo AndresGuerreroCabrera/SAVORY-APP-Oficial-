@@ -24,7 +24,7 @@ const NAV_ITEMS: NavItem[] = [
     activePaths: ["/list", "/wishlist", "/groups"],
   },
   { key: "home", label: "Inicio", Icon: Home as SavoryIconGlyph, route: "/" },
-  { key: "grid", label: "Cuadrícula", Icon: Square as SavoryIconGlyph },
+  { key: "grid", label: "Recomendaciones", Icon: Square as SavoryIconGlyph, route: "/recommendations" },
   { key: "profile", label: "Perfil", Icon: UserRound as SavoryIconGlyph, route: "/profile" },
 ];
 
