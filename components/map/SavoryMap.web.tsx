@@ -211,7 +211,6 @@ export default function SavoryMap() {
   const viewportWidth = useViewportWidth();
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
   const savedMarkerRefs = useRef<google.maps.Marker[]>([]);
   const savedInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -305,7 +304,6 @@ export default function SavoryMap() {
 
     return () => {
       cancelled = true;
-      markerRef.current?.setMap(null);
       savedMarkerRefs.current.forEach((savedMarker) => savedMarker.setMap(null));
       userMarkerRef.current?.setMap(null);
       userAccuracyCircleRef.current?.setMap(null);
@@ -653,26 +651,6 @@ export default function SavoryMap() {
     }
 
     const position = new google.maps.LatLng(place.location.lat, place.location.lng);
-
-    if (!markerRef.current) {
-      markerRef.current = new google.maps.Marker({
-        clickable: false,
-        icon: {
-          fillColor: theme.colors.coral,
-          fillOpacity: 1,
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 9,
-          strokeColor: theme.colors.white,
-          strokeWeight: 3,
-        },
-        map: mapRef.current,
-        optimized: true,
-        position,
-      });
-    } else {
-      markerRef.current.setPosition(position);
-      markerRef.current.setMap(mapRef.current);
-    }
 
     mapRef.current.panTo(position);
     mapRef.current.setZoom(16);

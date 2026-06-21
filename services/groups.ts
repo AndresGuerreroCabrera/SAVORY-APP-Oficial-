@@ -275,7 +275,6 @@ export async function updateGroup(input: { avatarUrl?: string | null; groupId: s
       .from("groups")
       .update(payload)
       .eq("id", input.groupId)
-      .eq("owner_id", sessionData.session.user.id)
       .select("id, owner_id, name, avatar_url, created_at, updated_at")
       .single();
 

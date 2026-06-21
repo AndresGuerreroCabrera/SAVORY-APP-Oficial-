@@ -69,6 +69,7 @@ export function GroupDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isOwner = Boolean(group && currentUserId && group.owner_id === currentUserId);
+  const canManageGroup = Boolean(currentUserId && members.some((member) => member.id === currentUserId));
 
   const loadGroup = useCallback(async () => {
     if (!groupId) {
@@ -210,6 +211,7 @@ export function GroupDetailScreen() {
               >
                 <GroupSettingsSheet
                   currentUserId={currentUserId}
+                  canManageGroup={canManageGroup}
                   group={group}
                   isOwner={isOwner}
                   members={members}
@@ -228,6 +230,7 @@ export function GroupDetailScreen() {
 }
 
 type GroupSettingsSheetProps = {
+  canManageGroup: boolean;
   currentUserId: string | null;
   group: GroupSummary;
   isOwner: boolean;
@@ -239,6 +242,7 @@ type GroupSettingsSheetProps = {
 };
 
 function GroupSettingsSheet({
+  canManageGroup,
   currentUserId,
   group,
   isOwner,
@@ -266,7 +270,7 @@ function GroupSettingsSheet({
   }, [friendQuery, friends, memberIds]);
 
   useEffect(() => {
-    if (!isOwner) {
+    if (!canManageGroup) {
       return;
     }
 
@@ -298,7 +302,7 @@ function GroupSettingsSheet({
     return () => {
       active = false;
     };
-  }, [isOwner]);
+  }, [canManageGroup]);
 
   const handleSaveName = async () => {
     const cleanName = name.trim();
@@ -452,7 +456,7 @@ function GroupSettingsSheet({
           <View style={styles.settingsHeader}>
             <Pressable
               accessibilityRole={group.avatar_url ? "imagebutton" : "button"}
-              disabled={!isOwner || saving}
+              disabled={!canManageGroup || saving}
               onPress={() => fileInputRef.current?.click()}
               style={({ pressed }) => [styles.settingsAvatarButton, pressed && styles.pressed]}
             >
@@ -463,12 +467,14 @@ function GroupSettingsSheet({
               )}
             </Pressable>
             <View style={styles.settingsTitleBlock}>
-              <Text style={styles.settingsTitle}>Grupo</Text>
+              <Text numberOfLines={2} style={styles.settingsTitle}>
+                {group.name}
+              </Text>
               <Text style={styles.settingsMeta}>{members.length} miembros</Text>
             </View>
           </View>
 
-          {isOwner ? (
+          {canManageGroup ? (
             <View style={styles.photoActions}>
               <Pressable
                 accessibilityRole="button"
@@ -493,7 +499,7 @@ function GroupSettingsSheet({
 
           <View style={styles.settingsSection}>
             <Text style={styles.settingsSectionTitle}>Nombre</Text>
-            {isOwner ? (
+            {canManageGroup ? (
               <View style={styles.nameEditRow}>
                 <TextInput
                   onChangeText={setName}
@@ -550,7 +556,7 @@ function GroupSettingsSheet({
             </View>
           </View>
 
-          {isOwner ? (
+          {canManageGroup ? (
             <View style={styles.settingsSection}>
               <Text style={styles.settingsSectionTitle}>Anadir miembros</Text>
               <View style={styles.friendSearchShell}>

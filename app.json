@@ -7,6 +7,10 @@
     "scheme": "savory",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#FF6B5F",
+      "resizeMode": "contain"
+    },
     "web": {
       "bundler": "metro",
       "output": "static",
