@@ -160,7 +160,11 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
   }
 
   if (records.length === 0) {
-    const emptyMessage = getEmptyListMessage({ isGroupList: Boolean(groupId), isWishlist });
+    const emptyMessage = getEmptyListMessage({
+      isGroupList: Boolean(groupId),
+      isPublicProfile: Boolean(publicUserId),
+      isWishlist,
+    });
 
     return (
       <View style={[styles.stateBlock, { width: contentWidth }]}>
@@ -432,7 +436,7 @@ function RestaurantFoldedCard({
   const hasInfo = !useCommunitySummary || Boolean(rating || priceRange || cuisineTypes.length);
 
   return (
-    <View accessibilityRole="button" {...getCardPressProps(onPress)} style={styles.card}>
+    <View {...getCardPressProps(onPress)} style={styles.card}>
       <View style={styles.cardMainButton}>
         <Text numberOfLines={1} style={styles.cardTitle}>
           {record.name}
@@ -977,7 +981,19 @@ function formatRating(value: number | null) {
   return `${value.toLocaleString("es-ES", { maximumFractionDigits: 1 })}/10`;
 }
 
-function getEmptyListMessage({ isGroupList, isWishlist }: { isGroupList: boolean; isWishlist: boolean }) {
+function getEmptyListMessage({
+  isGroupList,
+  isPublicProfile,
+  isWishlist,
+}: {
+  isGroupList: boolean;
+  isPublicProfile: boolean;
+  isWishlist: boolean;
+}) {
+  if (isPublicProfile) {
+    return "Este usuario todavia no ha guardado restaurantes publicos.";
+  }
+
   if (isGroupList && isWishlist) {
     return "Esta lista compartida aun no tiene deseados. Guardad restaurantes que os apetezca probar juntos 😋";
   }
@@ -1155,7 +1171,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
-    textDecorationLine: "underline",
   },
   metaGrid: {
     flexDirection: "row",
@@ -1232,7 +1247,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18,
     marginTop: 4,
-    textDecorationLine: "underline",
   },
   closeButton: {
     alignItems: "center",
@@ -1441,7 +1455,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
-    textDecorationLine: "underline",
   },
   emptyText: {
     color: theme.colors.muted,

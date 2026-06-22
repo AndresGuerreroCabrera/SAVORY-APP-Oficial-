@@ -83,7 +83,11 @@ const SUPABASE_NETWORK_ERROR =
 const SUPABASE_HEADER_TOO_LARGE_ERROR =
   "La sesion es demasiado grande porque Auth tiene una foto guardada en metadata. Cierra sesion y ejecuta la limpieza de avatar_url en auth.users.";
 
-export function ProfileScreen() {
+type ProfileScreenProps = {
+  authOnly?: boolean;
+};
+
+export function ProfileScreen({ authOnly = false }: ProfileScreenProps) {
   const { width: viewportWidth } = useWindowDimensions();
   const registerPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
@@ -581,7 +585,7 @@ export function ProfileScreen() {
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: 118 }]}
+          contentContainerStyle={[styles.content, { paddingBottom: session && !authOnly ? 118 : 24 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -810,11 +814,11 @@ export function ProfileScreen() {
             )}
           </View>
 
-          {isSupabaseConfigured && session ? (
+          {isSupabaseConfigured && session && !authOnly ? (
             <SavoryScoreSection contentWidth={contentWidth} currentUserId={session.user.id} />
           ) : null}
 
-          {isSupabaseConfigured && session ? (
+          {isSupabaseConfigured && session && !authOnly ? (
             <FriendsConnectorSection contentWidth={contentWidth} session={session} />
           ) : null}
         </ScrollView>
@@ -884,9 +888,11 @@ export function ProfileScreen() {
         </View>
       ) : null}
 
-      <View pointerEvents="box-none" style={styles.bottomNav}>
-        <BottomNav width={navWidth} />
-      </View>
+      {session && !authOnly ? (
+        <View pointerEvents="box-none" style={styles.bottomNav}>
+          <BottomNav width={navWidth} />
+        </View>
+      ) : null}
       <ImageLightbox
         caption={previewProfilePhoto?.caption ?? null}
         imageUri={previewProfilePhoto?.uri ?? null}
@@ -995,7 +1001,6 @@ function ProfilePhotoPicker({ avatarUrl, buttonLabel, disabled, inputRef, onPick
         >
           <Text style={styles.photoButtonText}>{buttonLabel}</Text>
         </Pressable>
-        <Text style={styles.photoHelper}>JPG, PNG o WebP. Máximo 650 KB.</Text>
       </View>
       {Platform.OS === "web" ? (
         <input

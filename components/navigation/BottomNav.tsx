@@ -1,6 +1,7 @@
 import { usePathname, useRouter } from "expo-router";
 import { ChevronDown, Home, List, Square, UserRound } from "lucide-react-native";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Pressable, StyleSheet, View } from "react-native";
 
 import { floatingShadow, theme } from "../../constants/theme";
 import { trackAppEvent } from "../../services/appAnalytics";
@@ -42,11 +43,11 @@ export function BottomNav({ width }: BottomNavProps) {
         const active = route ? (activePaths ?? [route]).includes(pathname) : false;
 
         return (
-          <Pressable
-            accessibilityLabel={label}
-            accessibilityRole="button"
-            hitSlop={10}
+          <NavButton
+            active={active}
+            Icon={Icon}
             key={key}
+            label={label}
             onPress={
               route
                 ? () => {
@@ -61,22 +62,71 @@ export function BottomNav({ width }: BottomNavProps) {
                   }
                 : undefined
             }
-            style={({ pressed }) => [
-              styles.item,
-              active && styles.itemActive,
-              pressed && styles.itemPressed,
-            ]}
-          >
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+type NavButtonProps = {
+  active: boolean;
+  Icon: SavoryIconGlyph;
+  label: string;
+  onPress?: () => void;
+};
+
+function NavButton({ active, Icon, label, onPress }: NavButtonProps) {
+  const progress = useRef(new Animated.Value(active ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      duration: 180,
+      toValue: active ? 1 : 0,
+      useNativeDriver: false,
+    }).start();
+  }, [active, progress]);
+
+  const bubbleOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const bubbleScale = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.72, 1],
+  });
+  const iconScale = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.1],
+  });
+
+  return (
+    <Pressable
+            accessibilityLabel={label}
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={onPress}
+            style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.itemActiveBubble,
+          {
+            opacity: bubbleOpacity,
+            transform: [{ scale: bubbleScale }],
+          },
+        ]}
+      />
+      <Animated.View style={{ transform: [{ scale: iconScale }] }}>
             <SavoryIcon
-              size={active ? 24 : 22}
+          size={22}
               color={active ? theme.colors.coral : theme.colors.text}
               glyph={Icon}
               strokeWidth={active ? 2.5 : 2.1}
             />
-          </Pressable>
-        );
-      })}
-    </View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -101,10 +151,18 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     height: 44,
     justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
     width: 52,
   },
-  itemActive: {
+  itemActiveBubble: {
     backgroundColor: "rgba(255, 240, 238, 0.78)",
+    borderRadius: theme.radius.pill,
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
   itemPressed: {
     opacity: 0.62,

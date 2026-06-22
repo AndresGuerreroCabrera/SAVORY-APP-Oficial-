@@ -1045,7 +1045,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18,
     marginTop: 4,
-    textDecorationLine: "underline",
   },
   iconButton: {
     alignItems: "center",
@@ -1073,7 +1072,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
-    textDecorationLine: "underline",
   },
   segmented: {
     backgroundColor: theme.colors.surfaceSoft,

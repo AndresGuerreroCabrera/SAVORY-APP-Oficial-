@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AuthGate } from "../components/auth/AuthGate";
 import { VercelAnalytics } from "../components/analytics/VercelAnalytics";
 import { VercelSpeedInsights } from "../components/analytics/VercelSpeedInsights";
 import { ProductAnalyticsTracker } from "../components/analytics/ProductAnalyticsTracker";
@@ -13,10 +14,12 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <View style={styles.root}>
         <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }} />
-        <ProductAnalyticsTracker />
-        <VercelAnalytics />
-        <VercelSpeedInsights />
+        <AuthGate>
+          <Stack screenOptions={{ headerShown: false }} />
+          <ProductAnalyticsTracker />
+          <VercelAnalytics />
+          <VercelSpeedInsights />
+        </AuthGate>
         <InitialSplash />
       </View>
     </SafeAreaProvider>

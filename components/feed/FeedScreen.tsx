@@ -43,6 +43,7 @@ export function FeedScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPost, setSelectedPost] = useState<RestaurantFeedPost | null>(null);
   const [savingPost, setSavingPost] = useState<RestaurantFeedPost | null>(null);
+  const [visibleParticipants, setVisibleParticipants] = useState<SocialProfile[] | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<RestaurantPhoto | null>(null);
   const seenImpressionPostIdsRef = useRef(new Set<string>());
 
@@ -101,7 +102,9 @@ export function FeedScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={[styles.header, { width: contentWidth }]}>
-            <Text style={styles.title}>Savory</Text>
+            <Text style={styles.title}>
+              Savory<Text style={styles.titleDot}>.</Text>
+            </Text>
           </View>
 
           {loading ? (
@@ -127,7 +130,7 @@ export function FeedScreen() {
                   key={post.id}
                   post={post}
                   onOpenDetail={setSelectedPost}
-                  onOpenGroup={(groupId) => router.push(`/group/${groupId}` as never)}
+                  onOpenParticipants={setVisibleParticipants}
                   onOpenProfile={(userId) => router.push(`/users/${userId}` as never)}
                   onPreviewPhoto={setPreviewPhoto}
                   onSave={setSavingPost}
@@ -146,10 +149,7 @@ export function FeedScreen() {
         {selectedPost ? (
           <FeedPostDetail
             onClose={() => setSelectedPost(null)}
-            onOpenGroup={(groupId) => {
-              setSelectedPost(null);
-              router.push(`/group/${groupId}` as never);
-            }}
+            onOpenParticipants={setVisibleParticipants}
             onOpenProfile={(userId) => {
               setSelectedPost(null);
               router.push(`/users/${userId}` as never);
@@ -195,6 +195,20 @@ export function FeedScreen() {
         ) : null}
       </Modal>
 
+      <Modal animationType="fade" onRequestClose={() => setVisibleParticipants(null)} transparent visible={Boolean(visibleParticipants)}>
+        {visibleParticipants ? (
+          <ParticipantsOverlay
+            members={visibleParticipants}
+            onClose={() => setVisibleParticipants(null)}
+            onOpenProfile={(userId) => {
+              setVisibleParticipants(null);
+              router.push(`/users/${userId}` as never);
+            }}
+            width={contentWidth}
+          />
+        ) : null}
+      </Modal>
+
       <ImageLightbox
         caption={previewPhoto?.caption?.trim() || null}
         imageUri={previewPhoto?.dataUrl ?? null}
@@ -208,7 +222,7 @@ export function FeedScreen() {
 
 function FeedPostCard({
   onOpenDetail,
-  onOpenGroup,
+  onOpenParticipants,
   onOpenProfile,
   onPreviewPhoto,
   onSave,
@@ -216,14 +230,14 @@ function FeedPostCard({
 }: {
   post: RestaurantFeedPost;
   onOpenDetail: (post: RestaurantFeedPost) => void;
-  onOpenGroup: (groupId: string) => void;
+  onOpenParticipants: (members: SocialProfile[]) => void;
   onOpenProfile: (userId: string) => void;
   onPreviewPhoto: (photo: RestaurantPhoto) => void;
   onSave: (post: RestaurantFeedPost) => void;
 }) {
   return (
     <View style={styles.postCard}>
-      <PostHeader post={post} onOpenGroup={onOpenGroup} onOpenProfile={onOpenProfile} />
+      <PostHeader post={post} onOpenParticipants={onOpenParticipants} onOpenProfile={onOpenProfile} />
       <RestaurantSummary
         compact
         onOpenDetail={() => onOpenDetail(post)}
@@ -243,12 +257,12 @@ function FeedPostCard({
 }
 
 function PostHeader({
-  onOpenGroup,
+  onOpenParticipants,
   onOpenProfile,
   post,
 }: {
   post: RestaurantFeedPost;
-  onOpenGroup: (groupId: string) => void;
+  onOpenParticipants: (members: SocialProfile[]) => void;
   onOpenProfile: (userId: string) => void;
 }) {
   if (post.source === "group" && post.group) {
@@ -256,19 +270,14 @@ function PostHeader({
 
     return (
       <View style={styles.postHeader}>
-        <Pressable accessibilityRole="button" onPress={() => onOpenGroup(post.group?.id ?? "")} style={styles.avatarButton}>
-          {post.group.avatar_url ? (
-            <Image source={{ uri: post.group.avatar_url }} style={styles.avatar} />
-          ) : (
-            <View style={styles.groupAvatarFallback}>
-              <SavoryIcon color={theme.colors.coral} glyph={GroupIcon} size={20} strokeWidth={2.2} />
-            </View>
-          )}
-        </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => onOpenGroup(post.group?.id ?? "")} style={styles.headerTextBlock}>
-          <Text numberOfLines={1} style={styles.headerName}>{post.group.name}</Text>
-          <Text numberOfLines={1} style={styles.headerMeta}>{participantText}</Text>
-        </Pressable>
+        <View style={styles.avatarButton}>
+          <GroupParticipantsAvatar members={post.members} />
+        </View>
+        <View style={styles.headerTextBlock}>
+          <Pressable accessibilityRole="button" onPress={() => onOpenParticipants(post.members)} style={({ pressed }) => pressed && styles.pressed}>
+            <Text numberOfLines={1} style={styles.headerName}>{participantText}</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -385,7 +394,7 @@ function RestaurantSummary({
 
 function FeedPostDetail({
   onClose,
-  onOpenGroup,
+  onOpenParticipants,
   onOpenProfile,
   onPreviewPhoto,
   onSave,
@@ -395,7 +404,7 @@ function FeedPostDetail({
   post: RestaurantFeedPost;
   width: number;
   onClose: () => void;
-  onOpenGroup: (groupId: string) => void;
+  onOpenParticipants: (members: SocialProfile[]) => void;
   onOpenProfile: (userId: string) => void;
   onPreviewPhoto: (photo: RestaurantPhoto) => void;
   onSave: (post: RestaurantFeedPost) => void;
@@ -411,7 +420,7 @@ function FeedPostDetail({
           </Pressable>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} style={styles.detailScroll}>
-          <PostHeader post={post} onOpenGroup={onOpenGroup} onOpenProfile={onOpenProfile} />
+          <PostHeader post={post} onOpenParticipants={onOpenParticipants} onOpenProfile={onOpenProfile} />
           <RestaurantSummary
             onOpenDetail={() => undefined}
             onPreviewPhoto={onPreviewPhoto}
@@ -486,7 +495,83 @@ function getParticipantText(members: SocialProfile[]) {
   }
 
   const remaining = Math.max(0, members.length - 1);
-  return remaining > 0 ? `${firstMember.username} +${remaining} participantes` : firstMember.username;
+  return remaining > 0 ? `${firstMember.username} +${remaining}` : firstMember.username;
+}
+
+function GroupParticipantsAvatar({ members }: { members: SocialProfile[] }) {
+  const visibleMembers = members.slice(0, 3);
+
+  if (visibleMembers.length === 0) {
+    return (
+      <View style={styles.groupAvatarStackFallback}>
+        <SavoryIcon color={theme.colors.coral} glyph={GroupIcon} size={20} strokeWidth={2.2} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.groupAvatarStack, { width: 46 + (visibleMembers.length - 1) * 14 }]}>
+      {visibleMembers.map((member, index) => (
+        <View key={member.id} style={[styles.groupAvatarBubble, { left: index * 14, zIndex: visibleMembers.length - index }]}>
+          {member.avatar_url ? (
+            <Image source={{ uri: member.avatar_url }} style={styles.groupAvatarBubbleImage} />
+          ) : (
+            <View style={styles.groupAvatarBubbleFallback}>
+              <Text style={styles.groupAvatarBubbleInitial}>{member.username.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function ParticipantsOverlay({
+  members,
+  onClose,
+  onOpenProfile,
+  width,
+}: {
+  members: SocialProfile[];
+  width: number;
+  onClose: () => void;
+  onOpenProfile: (userId: string) => void;
+}) {
+  return (
+    <View style={styles.overlay}>
+      <Pressable accessibilityLabel="Cerrar participantes" onPress={onClose} style={styles.backdrop} />
+      <View style={[styles.participantsSheet, { width }]}>
+        <View style={styles.sheetHeader}>
+          <Text numberOfLines={1} style={styles.sheetTitle}>Participantes</Text>
+          <Pressable accessibilityRole="button" hitSlop={10} onPress={onClose} style={styles.closeButton}>
+            <SavoryIcon color={theme.colors.text} glyph={CloseIcon} size={20} strokeWidth={2.3} />
+          </Pressable>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} style={styles.participantsScroll}>
+          {members.map((member) => (
+            <Pressable
+              accessibilityRole="button"
+              key={member.id}
+              onPress={() => onOpenProfile(member.id)}
+              style={({ pressed }) => [styles.participantRow, pressed && styles.pressed]}
+            >
+              {member.avatar_url ? (
+                <Image source={{ uri: member.avatar_url }} style={styles.participantAvatar} />
+              ) : (
+                <View style={styles.participantAvatarFallback}>
+                  <Text style={styles.participantAvatarInitial}>{member.username.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={styles.participantTextBlock}>
+                <Text numberOfLines={1} style={styles.participantName}>{member.username}</Text>
+                {member.display_name ? <Text numberOfLines={1} style={styles.participantMeta}>{member.display_name}</Text> : null}
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    </View>
+  );
 }
 
 function getPostOwnerUserId(post: RestaurantFeedPost) {
@@ -555,6 +640,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 34,
   },
+  titleDot: {
+    color: theme.colors.coral,
+  },
   postList: {
     gap: 14,
   },
@@ -597,6 +685,46 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 46,
   },
+  groupAvatarStack: {
+    height: 46,
+    position: "relative",
+    width: 74,
+  },
+  groupAvatarStackFallback: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderRadius: theme.radius.pill,
+    height: 46,
+    justifyContent: "center",
+    width: 46,
+  },
+  groupAvatarBubble: {
+    backgroundColor: theme.colors.surfaceSoft,
+    borderColor: theme.colors.white,
+    borderRadius: theme.radius.pill,
+    borderWidth: 2,
+    height: 46,
+    overflow: "hidden",
+    position: "absolute",
+    top: 0,
+    width: 46,
+  },
+  groupAvatarBubbleImage: {
+    height: "100%",
+    width: "100%",
+  },
+  groupAvatarBubbleFallback: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    height: "100%",
+    justifyContent: "center",
+    width: "100%",
+  },
+  groupAvatarBubbleInitial: {
+    color: theme.colors.coral,
+    fontSize: 16,
+    fontWeight: "900",
+  },
   avatarInitial: {
     color: theme.colors.coral,
     fontSize: 17,
@@ -633,7 +761,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     lineHeight: 18,
-    textDecorationLine: "underline",
   },
   linkRow: {
     flexDirection: "row",
@@ -839,6 +966,66 @@ const styles = StyleSheet.create({
     gap: 12,
     maxHeight: "86%",
     padding: 16,
+  },
+  participantsSheet: {
+    ...floatingShadow,
+    backgroundColor: theme.colors.surfaceGlass,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    maxHeight: "72%",
+    overflow: "hidden",
+    padding: 16,
+  },
+  participantsScroll: {
+    marginTop: 8,
+  },
+  participantRow: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+    minHeight: 58,
+    padding: 9,
+  },
+  participantAvatar: {
+    backgroundColor: theme.colors.surfaceSoft,
+    borderRadius: theme.radius.pill,
+    height: 40,
+    width: 40,
+  },
+  participantAvatarFallback: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderRadius: theme.radius.pill,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  participantAvatarInitial: {
+    color: theme.colors.coral,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  participantTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  participantName: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 20,
+  },
+  participantMeta: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16,
   },
   sheetHeader: {
     alignItems: "center",

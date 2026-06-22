@@ -391,7 +391,7 @@ export default function SavoryMap() {
                   font-weight: 850;
                   line-height: 16px;
                   max-width: 190px;
-                  text-decoration: underline;
+                  text-decoration: none;
                 ">${escapeHtml(pin.restaurant.group_name)}</a>
               </div>
               <div style="
@@ -449,7 +449,7 @@ export default function SavoryMap() {
                     font-weight: 800;
                     line-height: 16px;
                     max-width: 200px;
-                    text-decoration: underline;
+                    text-decoration: none;
                   ">${escapeHtml(restaurant.address)}</a>`
                 : ""
             }

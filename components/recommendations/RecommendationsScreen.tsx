@@ -487,7 +487,6 @@ function RecommendationCard({
         <View style={styles.metricGrid}>
           <MetricTile label="Puntuación" value={formatRating(recommendation.medianRating)} />
           <MetricTile label="Precio" value={recommendation.priceRangeMode ?? "Sin datos"} />
-          <MetricTile label="Visitas" value={String(recommendation.reviewCount)} />
         </View>
 
         <TagSection title="Comida" tags={recommendation.cuisineTags} />
@@ -1034,7 +1033,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     lineHeight: 18,
     marginTop: 4,
-    textDecorationLine: "underline",
   },
   linkRow: {
     flexDirection: "row",

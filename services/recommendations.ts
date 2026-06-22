@@ -1,4 +1,5 @@
 import { getCurrentUserSavedRestaurants, saveRestaurant } from "./savedRestaurants";
+import { getCurrentUserGroupRestaurantPins } from "./groups";
 import { supabase } from "./supabase";
 import type { SavoryPlace } from "../types/place";
 import type {
@@ -52,11 +53,13 @@ export async function getRestaurantRecommendations(input: {
   }
 
   try {
-    const [personalResult, groupResult, visitedResult, desiredResult] = await Promise.all([
+    const [personalResult, groupResult, visitedResult, desiredResult, groupPinsResult, sessionResult] = await Promise.all([
       getPublicPersonalRestaurants(),
       getPublicGroupRestaurants(),
       getCurrentUserSavedRestaurants("visited"),
       getCurrentUserSavedRestaurants("want_to_go"),
+      getCurrentUserGroupRestaurantPins(),
+      supabase.auth.getSession(),
     ]);
 
     if (personalResult.error || groupResult.error) {
@@ -68,10 +71,18 @@ export async function getRestaurantRecommendations(input: {
 
     const visited = visitedResult.error ? [] : visitedResult.data;
     const desired = desiredResult.error ? [] : desiredResult.data;
-    const blockedPlaceIds = new Set([...visited, ...desired].map((record) => record.google_place_id));
+    const currentUserId = sessionResult.data.session?.user.id ?? null;
+    const groupVisitedByCurrentUser = groupPinsResult.error
+      ? []
+      : groupPinsResult.data.filter((record) => record.status === "visited" && record.user_id === currentUserId);
+    const blockedPlaceIds = new Set(
+      [...visited, ...desired, ...groupVisitedByCurrentUser]
+        .map((record) => normalizePlaceKey(record.google_place_id))
+        .filter(Boolean),
+    );
     const tasteProfile = buildUserTasteProfile(visited);
     const recommendations = aggregateRecommendations([...personalResult.data, ...groupResult.data])
-      .filter((recommendation) => !blockedPlaceIds.has(recommendation.googlePlaceId))
+      .filter((recommendation) => !blockedPlaceIds.has(normalizePlaceKey(recommendation.googlePlaceId)))
       .filter((recommendation) => matchesRecommendationFilters(recommendation, input.filters))
       .map((recommendation) => ({
         ...recommendation,
@@ -125,6 +136,10 @@ function recommendationToPlace(recommendation: RestaurantRecommendation): Savory
     types: recommendation.googleTypes,
     website: recommendation.website ?? undefined,
   };
+}
+
+function normalizePlaceKey(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
 }
 
 async function getPublicPersonalRestaurants() {

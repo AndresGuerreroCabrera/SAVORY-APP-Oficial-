@@ -14,8 +14,12 @@ export function WishlistScreen() {
     <ListPageShell title="Deseados">
       {({ contentWidth }) => (
         <View style={[styles.contentBlock, { width: contentWidth }]}>
-          <ListBackButton width={contentWidth} />
-          <FiltersDropdown filters={filters} onChange={setFilters} width={contentWidth} />
+          <FiltersDropdown
+            filters={filters}
+            headerContent={<ListBackButton width={Math.max(180, contentWidth - 64)} />}
+            onChange={setFilters}
+            width={contentWidth}
+          />
           <SavedRestaurantList contentWidth={contentWidth} filters={filters} status="want_to_go" />
         </View>
       )}
