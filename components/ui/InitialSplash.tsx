@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
     zIndex: 9999,
   },
   title: {
-    color: theme.colors.black,
+    color: theme.colors.white,
     fontSize: 42,
     fontWeight: "900",
     letterSpacing: 0,
