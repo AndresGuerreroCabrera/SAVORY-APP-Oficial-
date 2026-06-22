@@ -115,10 +115,6 @@ export function RestaurantSaveSheet({
 
         setGroups(data);
 
-        if (!showGroupPickerOnly && !selectedGroupId && data[0]) {
-          setSelectedGroupId(data[0].id);
-        }
-
         if (loadError) {
           setGroupsError(loadError.message);
         }
@@ -345,6 +341,16 @@ export function RestaurantSaveSheet({
 
   const isVisited = status === "visited";
   const isEditingVisited = Boolean(initialRecord && isVisited);
+  const requiresGroupSelection = saveTarget === "group" && !selectedGroupId;
+  const saveDisabled = saving || requiresGroupSelection;
+
+  const handleTargetChange = (nextTarget: SaveTarget) => {
+    setSaveTarget(nextTarget);
+
+    if (nextTarget === "group" && !groupId) {
+      setSelectedGroupId(null);
+    }
+  };
 
   if (showGroupPickerOnly) {
     return (
@@ -434,7 +440,7 @@ export function RestaurantSaveSheet({
 
         {lockTarget ? null : (
           <>
-            <TargetChoice value={saveTarget} onChange={setSaveTarget} />
+            <TargetChoice value={saveTarget} onChange={handleTargetChange} />
             {saveTarget === "group" ? (
               <View style={styles.inlineGroupPicker}>
                 <GroupPicker
@@ -465,9 +471,9 @@ export function RestaurantSaveSheet({
                 <StepMenu activeStep={step} onSelect={setStep} />
                 <Pressable
                   accessibilityRole="button"
-                  disabled={saving}
+                  disabled={saveDisabled}
                   onPress={saveCurrentRestaurant}
-                  style={[styles.quickSaveButton, saving && styles.disabledButton]}
+                  style={[styles.quickSaveButton, saveDisabled && styles.disabledButton]}
                 >
                   {saving ? <ActivityIndicator color={theme.colors.white} /> : <Text style={styles.quickSaveButtonText}>Guardar cambios</Text>}
                 </Pressable>
@@ -564,9 +570,9 @@ export function RestaurantSaveSheet({
                 />
                 <Pressable
                   accessibilityRole="button"
-                  disabled={saving}
+                  disabled={saveDisabled}
                   onPress={saveCurrentRestaurant}
-                  style={[styles.primaryButton, saving && styles.disabledButton]}
+                  style={[styles.primaryButton, saveDisabled && styles.disabledButton]}
                 >
                   {saving ? <ActivityIndicator color={theme.colors.white} /> : <Text style={styles.primaryButtonText}>Guardar</Text>}
                 </Pressable>
@@ -577,9 +583,9 @@ export function RestaurantSaveSheet({
         ) : (
           <Pressable
             accessibilityRole="button"
-            disabled={saving}
+            disabled={saveDisabled}
             onPress={saveCurrentRestaurant}
-            style={[styles.primaryButton, saving && styles.disabledButton]}
+            style={[styles.primaryButton, saveDisabled && styles.disabledButton]}
           >
             {saving ? <ActivityIndicator color={theme.colors.white} /> : <Text style={styles.primaryButtonText}>Guardar</Text>}
           </Pressable>
@@ -639,7 +645,7 @@ type GroupPickerProps = {
   groups: GroupSummary[];
   loading: boolean;
   selectedGroupId: string | null;
-  onSelect: (groupId: string) => void;
+  onSelect: (groupId: string | null) => void;
 };
 
 function GroupPicker({ error, groups, loading, onSelect, selectedGroupId }: GroupPickerProps) {
@@ -671,7 +677,7 @@ function GroupPicker({ error, groups, loading, onSelect, selectedGroupId }: Grou
               accessibilityRole="button"
               accessibilityState={{ selected }}
               key={group.id}
-              onPress={() => onSelect(group.id)}
+              onPress={() => onSelect(selected ? null : group.id)}
               style={[styles.groupChoice, selected && styles.groupChoiceSelected]}
             >
               {group.avatar_url ? (
