@@ -285,7 +285,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterSection: {
+    backgroundColor: "rgba(255, 98, 90, 0.04)",
+    borderColor: "rgba(255, 98, 90, 0.16)",
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
     gap: 8,
+    padding: 10,
   },
   sectionTitle: {
     color: theme.colors.text,
@@ -313,8 +318,8 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   chip: {
-    backgroundColor: theme.colors.white,
-    borderColor: theme.colors.border,
+    backgroundColor: "rgba(255, 98, 90, 0.055)",
+    borderColor: "rgba(255, 98, 90, 0.25)",
     borderRadius: theme.radius.pill,
     borderWidth: 1,
     paddingHorizontal: 10,
@@ -325,13 +330,13 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.coral,
   },
   chipText: {
-    color: theme.colors.textSoft,
+    color: theme.colors.text,
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 16,
   },
   chipTextSelected: {
-    color: theme.colors.text,
+    color: theme.colors.coral,
   },
   clearButton: {
     alignItems: "center",

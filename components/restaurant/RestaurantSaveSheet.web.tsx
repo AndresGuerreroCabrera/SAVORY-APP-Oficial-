@@ -1,7 +1,7 @@
 import { Camera, ChevronLeft, X } from "lucide-react-native";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Animated, Image, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { CUISINE_TYPES, OCCASION_TYPES, PRICE_RANGES } from "../../constants/restaurantOptions";
 import { floatingShadow, theme } from "../../constants/theme";
@@ -97,6 +97,9 @@ export function RestaurantSaveSheet({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<RestaurantPhoto | null>(null);
+  const isVisited = status === "visited";
+  const isEditingVisited = Boolean(initialRecord && isVisited);
+  const visitedProgress = useRef(new Animated.Value(isVisited ? 1 : 0)).current;
 
   useEffect(() => {
     if (saveTarget !== "group" || groupId) {
@@ -134,6 +137,14 @@ export function RestaurantSaveSheet({
       active = false;
     };
   }, [groupId, saveTarget, selectedGroupId, showGroupPickerOnly]);
+
+  useEffect(() => {
+    Animated.timing(visitedProgress, {
+      duration: 220,
+      toValue: isVisited ? 1 : 0,
+      useNativeDriver: false,
+    }).start();
+  }, [isVisited, visitedProgress]);
 
   const saveCurrentRestaurant = async () => {
     setError(null);
@@ -339,10 +350,41 @@ export function RestaurantSaveSheet({
     }
   };
 
-  const isVisited = status === "visited";
-  const isEditingVisited = Boolean(initialRecord && isVisited);
   const requiresGroupSelection = saveTarget === "group" && !selectedGroupId;
   const saveDisabled = saving || requiresGroupSelection;
+  const topPanelAnimatedStyle = {
+    maxHeight: visitedProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [520, 0],
+    }),
+    opacity: visitedProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [1, 0],
+    }),
+    transform: [
+      {
+        translateY: visitedProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -12],
+        }),
+      },
+    ],
+  };
+  const visitedBackAnimatedStyle = {
+    maxHeight: visitedProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 54],
+    }),
+    opacity: visitedProgress,
+    transform: [
+      {
+        translateY: visitedProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-8, 0],
+        }),
+      },
+    ],
+  };
 
   const handleTargetChange = (nextTarget: SaveTarget) => {
     setSaveTarget(nextTarget);
@@ -352,11 +394,51 @@ export function RestaurantSaveSheet({
     }
   };
 
+  const handleVisitedBack = () => {
+    if (step === "visibility") {
+      setStep("service");
+      return;
+    }
+
+    if (step === "service") {
+      setStep("local");
+      return;
+    }
+
+    if (step === "local") {
+      setStep("food");
+      return;
+    }
+
+    if (lockStatus && isEditingVisited) {
+      onClose();
+      return;
+    }
+
+    setStatus("want_to_go");
+  };
+
+  const handleVisitedNext = () => {
+    if (step === "food") {
+      setStep("local");
+      return;
+    }
+
+    if (step === "local") {
+      setStep("service");
+      return;
+    }
+
+    if (step === "service") {
+      setStep("visibility");
+    }
+  };
+
   if (showGroupPickerOnly) {
     return (
       <View style={styles.overlay}>
         <Pressable accessibilityLabel="Cerrar restaurante" onPress={onClose} style={styles.backdrop} />
-        <View style={[styles.sheet, { width }]}>
+        <View style={[styles.sheet, isVisited && styles.visitedSheet, { width }]}>
           <View style={styles.headerRow}>
             <View style={styles.headerText}>
               <Text numberOfLines={2} style={styles.title}>
@@ -390,79 +472,92 @@ export function RestaurantSaveSheet({
     <View style={styles.overlay}>
       <Pressable accessibilityLabel="Cerrar restaurante" onPress={onClose} style={styles.backdrop} />
       <View style={[styles.sheet, { width }]}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text numberOfLines={2} style={styles.title}>
-              {place.name}
-            </Text>
-            {place.address ? (
-              <Pressable
-                accessibilityRole="link"
-                onPress={() =>
-                  openExternalUrl(
-                    getGoogleMapsUrl({
-                      address: place.address,
-                      lat: place.location?.lat,
-                      lng: place.location?.lng,
-                      name: place.name,
-                      placeId: place.placeId,
-                    }),
-                  )
-                }
-              >
-                <Text numberOfLines={2} style={styles.addressLink}>
-                  {place.address}
+        <View style={styles.saveHeaderStack}>
+          <Animated.View style={[styles.topPanel, topPanelAnimatedStyle]} pointerEvents={isVisited ? "none" : "auto"}>
+            <View style={styles.headerRow}>
+              <View style={styles.headerText}>
+                <Text numberOfLines={2} style={styles.title}>
+                  {place.name}
                 </Text>
+                {place.address ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() =>
+                      openExternalUrl(
+                        getGoogleMapsUrl({
+                          address: place.address,
+                          lat: place.location?.lat,
+                          lng: place.location?.lng,
+                          name: place.name,
+                          placeId: place.placeId,
+                        }),
+                      )
+                    }
+                  >
+                    <Text numberOfLines={2} style={styles.addressLink}>
+                      {place.address}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <Pressable accessibilityRole="button" hitSlop={10} onPress={onClose} style={styles.iconButton}>
+                <SavoryIcon color={theme.colors.text} glyph={CloseIcon} size={20} strokeWidth={2.4} />
               </Pressable>
-            ) : null}
-          </View>
-          <Pressable accessibilityRole="button" hitSlop={10} onPress={onClose} style={styles.iconButton}>
-            <SavoryIcon color={theme.colors.text} glyph={CloseIcon} size={20} strokeWidth={2.4} />
-          </Pressable>
-        </View>
+            </View>
 
-        {place.phone || place.website ? (
-          <View style={styles.infoBlock}>
-            {place.phone ? (
-              <Pressable accessibilityRole="link" onPress={() => openExternalUrl(getPhoneUrl(place.phone ?? ""))}>
-                <Text style={styles.infoLink}>{place.phone}</Text>
-              </Pressable>
-            ) : null}
-            {place.website ? (
-              <Pressable accessibilityRole="link" onPress={() => openExternalUrl(getWebsiteUrl(place.website ?? ""))}>
-                <Text numberOfLines={1} style={styles.infoLink}>
-                  {place.website}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
-        {lockTarget ? null : (
-          <>
-            <TargetChoice value={saveTarget} onChange={handleTargetChange} />
-            {saveTarget === "group" ? (
-              <View style={styles.inlineGroupPicker}>
-                <GroupPicker
-                  error={groupsError}
-                  groups={groups}
-                  loading={loadingGroups}
-                  selectedGroupId={selectedGroupId}
-                  onSelect={setSelectedGroupId}
-                />
+            {place.phone || place.website ? (
+              <View style={styles.infoBlock}>
+                {place.phone ? (
+                  <Pressable accessibilityRole="link" onPress={() => openExternalUrl(getPhoneUrl(place.phone ?? ""))}>
+                    <Text style={styles.infoLink}>{place.phone}</Text>
+                  </Pressable>
+                ) : null}
+                {place.website ? (
+                  <Pressable accessibilityRole="link" onPress={() => openExternalUrl(getWebsiteUrl(place.website ?? ""))}>
+                    <Text numberOfLines={1} style={styles.infoLink}>
+                      {place.website}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
-          </>
-        )}
 
-        {lockStatus ? null : (
-          <SegmentedChoice
-            leftLabel="Quiero ir"
-            onChange={setStatus}
-            rightLabel="Ya he ido"
-            value={status}
-          />
-        )}
+            {lockTarget ? null : (
+              <>
+                <TargetChoice value={saveTarget} onChange={handleTargetChange} />
+                {saveTarget === "group" ? (
+                  <View style={styles.inlineGroupPicker}>
+                    <GroupPicker
+                      error={groupsError}
+                      groups={groups}
+                      loading={loadingGroups}
+                      selectedGroupId={selectedGroupId}
+                      onSelect={setSelectedGroupId}
+                    />
+                  </View>
+                ) : null}
+              </>
+            )}
+
+            {lockStatus ? null : (
+              <SegmentedChoice
+                leftLabel="Quiero ir"
+                onChange={setStatus}
+                rightLabel="Ya he ido"
+                value={status}
+              />
+            )}
+          </Animated.View>
+
+          <Animated.View style={[styles.visitedBackPanel, visitedBackAnimatedStyle]} pointerEvents={isVisited ? "auto" : "none"}>
+            <StepNav
+              onBack={handleVisitedBack}
+              onClose={onClose}
+              onNext={step === "visibility" ? undefined : handleVisitedNext}
+              title={getVisitedStepTitle(step)}
+            />
+          </Animated.View>
+        </View>
 
         {isVisited ? (
           <>
@@ -483,38 +578,42 @@ export function RestaurantSaveSheet({
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={styles.visitedScroll}>
             {step === "food" ? (
               <View style={styles.stepArea}>
-                <Text style={styles.stepTitle}>Comida</Text>
-                <SearchableChipCloud
-                  items={CUISINE_TYPES}
-                  placeholder="Buscar tipo de comida"
-                  selected={cuisineTypes}
-                  onToggle={setCuisineTypes}
-                />
-                <PhotoPicker
-                  buttonLabel="Subir foto de plato"
-                  inputRef={dishInputRef}
-                  kind="dish"
-                  onPick={handlePhotoPick}
-                  photos={dishPhotos}
-                  onCaptionChange={updatePhotoCaption}
-                  onPreview={setPreviewPhoto}
-                />
-                <RatingCircles value={foodRating} onChange={setFoodRating} />
-                <Pressable accessibilityRole="button" onPress={() => setStep("local")} style={styles.primaryButton}>
-                  <Text style={styles.primaryButtonText}>Siguiente</Text>
-                </Pressable>
+                <FormSubsection title="Tipo de comida">
+                  <SearchableChipCloud
+                    items={CUISINE_TYPES}
+                    placeholder="Buscar tipo de comida"
+                    selected={cuisineTypes}
+                    onToggle={setCuisineTypes}
+                  />
+                </FormSubsection>
+                <FormSubsection title="Fotos de platos">
+                  <PhotoPicker
+                    buttonLabel="Subir foto de plato"
+                    inputRef={dishInputRef}
+                    kind="dish"
+                    onPick={handlePhotoPick}
+                    photos={dishPhotos}
+                    onCaptionChange={updatePhotoCaption}
+                    onPreview={setPreviewPhoto}
+                  />
+                </FormSubsection>
+                <FormSubsection title="Puntuación">
+                  <RatingCircles value={foodRating} onChange={setFoodRating} />
+                </FormSubsection>
               </View>
             ) : null}
 
             {step === "local" ? (
               <View style={styles.stepArea}>
-                <StepNav onBack={() => setStep("food")} title="Local" />
+                <FormSubsection title="Tipo de ocasión">
                 <SearchableChipCloud
                   items={OCCASION_TYPES}
                   placeholder="Buscar tipo de ocasión"
                   selected={occasionTypes}
                   onToggle={setOccasionTypes}
                 />
+                </FormSubsection>
+                <FormSubsection title="Fotos del local">
                 <PhotoPicker
                   buttonLabel="Subir foto del local"
                   inputRef={localInputRef}
@@ -524,17 +623,16 @@ export function RestaurantSaveSheet({
                   onCaptionChange={updatePhotoCaption}
                   onPreview={setPreviewPhoto}
                 />
-                <Text style={styles.fieldLabel}>Precio por persona</Text>
+                </FormSubsection>
+                <FormSubsection title="Precio por persona">
                 <ChipCloud single items={PRICE_RANGES} selected={priceRange ? [priceRange] : []} onToggle={(next) => setPriceRange(next[0] ?? null)} />
-                <Pressable accessibilityRole="button" onPress={() => setStep("service")} style={styles.primaryButton}>
-                  <Text style={styles.primaryButtonText}>Siguiente</Text>
-                </Pressable>
+                </FormSubsection>
               </View>
             ) : null}
 
             {step === "service" ? (
               <View style={styles.stepArea}>
-                <StepNav onBack={() => setStep("local")} title="Servicio" />
+                <FormSubsection title="Servicio">
                 <TextInput
                   multiline
                   onChangeText={setServiceComment}
@@ -544,6 +642,8 @@ export function RestaurantSaveSheet({
                   style={styles.textArea}
                   value={serviceComment}
                 />
+                </FormSubsection>
+                <FormSubsection title="Comentario general">
                 <TextInput
                   multiline
                   onChangeText={setGeneralComment}
@@ -553,21 +653,20 @@ export function RestaurantSaveSheet({
                   style={styles.textArea}
                   value={generalComment}
                 />
-                <Pressable accessibilityRole="button" onPress={() => setStep("visibility")} style={styles.primaryButton}>
-                  <Text style={styles.primaryButtonText}>Siguiente</Text>
-                </Pressable>
+                </FormSubsection>
               </View>
             ) : null}
 
             {step === "visibility" ? (
               <View style={styles.stepArea}>
-                <StepNav onBack={() => setStep("service")} title="Visibilidad" />
+                <FormSubsection title="Visibilidad">
                 <SegmentedChoice
                   leftLabel="Privado"
                   onChange={setVisibility}
                   rightLabel="Público"
                   value={visibility}
                 />
+                </FormSubsection>
                 <Pressable
                   accessibilityRole="button"
                   disabled={saveDisabled}
@@ -764,6 +863,18 @@ type SearchableChipCloudProps = ChipCloudProps & {
   placeholder: string;
 };
 
+function FormSubsection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <View style={styles.formSubsection}>
+      <View style={styles.formSubsectionHeader}>
+        <View style={styles.formSubsectionAccent} />
+        <Text style={styles.formSubsectionTitle}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
 function SearchableChipCloud({ items, onToggle, placeholder, selected }: SearchableChipCloudProps) {
   const [query, setQuery] = useState("");
   const normalizedQuery = normalizeOptionText(query);
@@ -920,16 +1031,42 @@ function RatingCircles({ onChange, value }: RatingCirclesProps) {
 type StepNavProps = {
   title: string;
   onBack: () => void;
+  onClose: () => void;
+  onNext?: () => void;
 };
 
-function StepNav({ onBack, title }: StepNavProps) {
+function getVisitedStepTitle(step: VisitedStep) {
+  if (step === "food") {
+    return "Comida";
+  }
+
+  if (step === "local") {
+    return "Local";
+  }
+
+  if (step === "service") {
+    return "Servicio";
+  }
+
+  return "Visibilidad";
+}
+
+function StepNav({ onBack, onClose, onNext, title }: StepNavProps) {
   return (
     <View style={styles.stepHeader}>
-      <Pressable accessibilityRole="button" onPress={onBack} style={styles.stepBackButton}>
+      <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={onBack} style={styles.stepBackButton}>
         <SavoryIcon color={theme.colors.text} glyph={BackIcon} size={18} strokeWidth={2.2} />
-        <Text style={styles.stepBackText}>Anterior</Text>
       </Pressable>
       <Text style={styles.stepTitle}>{title}</Text>
+      <View style={styles.stepHeaderSpacer} />
+      {onNext ? (
+        <Pressable accessibilityRole="button" onPress={onNext} style={styles.stepNextButton}>
+          <Text style={styles.stepNextText}>Siguiente</Text>
+        </Pressable>
+      ) : null}
+      <Pressable accessibilityLabel="Cerrar restaurante" accessibilityRole="button" onPress={onClose} style={styles.stepCloseButton}>
+        <SavoryIcon color={theme.colors.coral} glyph={CloseIcon} size={18} strokeWidth={2.6} />
+      </Pressable>
     </View>
   );
 }
@@ -1022,6 +1159,19 @@ const styles = StyleSheet.create({
     gap: 14,
     maxHeight: "86%",
     padding: 18,
+  },
+  visitedSheet: {
+    maxHeight: "94%",
+  },
+  saveHeaderStack: {
+    overflow: "hidden",
+  },
+  topPanel: {
+    gap: 14,
+    overflow: "hidden",
+  },
+  visitedBackPanel: {
+    overflow: "hidden",
   },
   headerRow: {
     alignItems: "flex-start",
@@ -1246,30 +1396,77 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   visitedScroll: {
-    maxHeight: 470,
+    maxHeight: 610,
   },
   stepArea: {
     gap: 14,
+  },
+  formSubsection: {
+    backgroundColor: "rgba(255, 98, 90, 0.045)",
+    borderColor: "rgba(255, 98, 90, 0.18)",
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  formSubsectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 7,
+  },
+  formSubsectionAccent: {
+    backgroundColor: theme.colors.coral,
+    borderRadius: theme.radius.pill,
+    height: 8,
+    width: 8,
+  },
+  formSubsectionTitle: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
   },
   stepHeader: {
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
   },
+  stepHeaderSpacer: {
+    flex: 1,
+  },
   stepBackButton: {
     alignItems: "center",
     borderColor: theme.colors.border,
     borderRadius: theme.radius.pill,
     borderWidth: 1,
-    flexDirection: "row",
-    gap: 4,
     height: 36,
-    paddingHorizontal: 10,
+    justifyContent: "center",
+    width: 36,
   },
-  stepBackText: {
+  stepNextButton: {
+    alignItems: "center",
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  stepNextText: {
     color: theme.colors.text,
     fontSize: 12,
     fontWeight: "900",
+    lineHeight: 16,
+  },
+  stepCloseButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.coralSoft,
+    borderColor: "rgba(255, 98, 90, 0.35)",
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
   },
   stepTitle: {
     color: theme.colors.text,
@@ -1300,8 +1497,8 @@ const styles = StyleSheet.create({
     maxHeight: 148,
   },
   chip: {
-    backgroundColor: theme.colors.white,
-    borderColor: theme.colors.border,
+    backgroundColor: "rgba(255, 98, 90, 0.055)",
+    borderColor: "rgba(255, 98, 90, 0.25)",
     borderRadius: theme.radius.pill,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -1312,13 +1509,13 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.coral,
   },
   chipText: {
-    color: theme.colors.textSoft,
+    color: theme.colors.text,
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 16,
   },
   chipTextSelected: {
-    color: theme.colors.text,
+    color: theme.colors.coral,
   },
   photoArea: {
     gap: 8,
