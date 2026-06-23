@@ -25,10 +25,17 @@ export async function getRestaurantFeed() {
   }
 
   try {
-    const { data: friends, error: friendsError } = await getCurrentUserFriendsForGroups();
+    const [{ data: friends, error: friendsError }, userResult] = await Promise.all([
+      getCurrentUserFriendsForGroups(),
+      supabase.auth.getUser(),
+    ]);
 
     if (friendsError) {
       return { data: [] as RestaurantFeedPost[], error: friendsError };
+    }
+
+    if (userResult.error || !userResult.data.user) {
+      return { data: [] as RestaurantFeedPost[], error: normalizeSupabaseError(userResult.error ?? new Error("No se pudo cargar tu sesion.")) };
     }
 
     const friendIds = friends.map((friend) => friend.id);
@@ -38,7 +45,7 @@ export async function getRestaurantFeed() {
     }
 
     const friendPosts = await getFriendPosts(friends, friendIds);
-    const groupPosts = await getGroupPosts(friendIds);
+    const groupPosts = await getGroupPosts(friendIds, userResult.data.user.id);
     const error = friendPosts.error ?? groupPosts.error;
 
     return {
@@ -87,7 +94,7 @@ async function getFriendPosts(friends: SocialProfile[], friendIds: string[]) {
   };
 }
 
-async function getGroupPosts(friendIds: string[]) {
+async function getGroupPosts(friendIds: string[], currentUserId: string) {
   const { data: friendMemberships, error: membershipsError } = await supabase!
     .from("group_members")
     .select("group_id")
@@ -109,13 +116,34 @@ async function getGroupPosts(friendIds: string[]) {
     return { data: [] as RestaurantFeedPost[], error: null };
   }
 
+  const { data: ownMemberships, error: ownMembershipsError } = await supabase!
+    .from("group_members")
+    .select("group_id")
+    .eq("user_id", currentUserId)
+    .in("group_id", groupIds);
+
+  if (ownMembershipsError) {
+    return { data: [] as RestaurantFeedPost[], error: normalizeSupabaseError(ownMembershipsError) };
+  }
+
+  const ownGroupIds = new Set(
+    (ownMemberships ?? [])
+      .map((row) => String((row as { group_id?: unknown }).group_id ?? ""))
+      .filter(Boolean),
+  );
+  const visibleGroupIds = groupIds.filter((groupId) => !ownGroupIds.has(groupId));
+
+  if (visibleGroupIds.length === 0) {
+    return { data: [] as RestaurantFeedPost[], error: null };
+  }
+
   const [restaurantsResult, membersResult] = await Promise.all([
     supabase!
       .from("group_restaurants")
       .select(
         "*, group:groups(id, name, avatar_url), added_by_profile:profiles!group_restaurants_added_by_fkey(id, username, display_name, avatar_url)",
       )
-      .in("group_id", groupIds)
+      .in("group_id", visibleGroupIds)
       .eq("status", "visited")
       .eq("visibility", "public")
       .order("saved_at", { ascending: false })
@@ -123,7 +151,7 @@ async function getGroupPosts(friendIds: string[]) {
     supabase!
       .from("group_members")
       .select("group_id, profile:profiles(id, username, display_name, avatar_url)")
-      .in("group_id", groupIds)
+      .in("group_id", visibleGroupIds)
       .order("created_at", { ascending: true }),
   ]);
 
