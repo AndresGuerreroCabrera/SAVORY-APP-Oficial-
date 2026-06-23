@@ -78,14 +78,32 @@ type NavButtonProps = {
 
 function NavButton({ active, Icon, label, onPress }: NavButtonProps) {
   const progress = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(progress, {
-      duration: 180,
+    Animated.spring(progress, {
+      friction: 8,
+      tension: 95,
       toValue: active ? 1 : 0,
       useNativeDriver: false,
     }).start();
-  }, [active, progress]);
+
+    if (active) {
+      pulse.setValue(0);
+      Animated.sequence([
+        Animated.timing(pulse, {
+          duration: 180,
+          toValue: 1,
+          useNativeDriver: false,
+        }),
+        Animated.timing(pulse, {
+          duration: 260,
+          toValue: 0,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    }
+  }, [active, progress, pulse]);
 
   const bubbleOpacity = progress.interpolate({
     inputRange: [0, 1],
@@ -99,15 +117,41 @@ function NavButton({ active, Icon, label, onPress }: NavButtonProps) {
     inputRange: [0, 1],
     outputRange: [1, 1.1],
   });
+  const inactiveIconOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  });
+  const activeIconOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const pulseOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.48],
+  });
+  const pulseScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.72, 1.18],
+  });
 
   return (
     <Pressable
-            accessibilityLabel={label}
-            accessibilityRole="button"
-            hitSlop={10}
-            onPress={onPress}
-            style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      hitSlop={10}
+      onPress={onPress}
+      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
     >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.itemPulse,
+          {
+            opacity: pulseOpacity,
+            transform: [{ scale: pulseScale }],
+          },
+        ]}
+      />
       <Animated.View
         pointerEvents="none"
         style={[
@@ -118,13 +162,23 @@ function NavButton({ active, Icon, label, onPress }: NavButtonProps) {
           },
         ]}
       />
-      <Animated.View style={{ transform: [{ scale: iconScale }] }}>
-            <SavoryIcon
+      <Animated.View style={[styles.iconStack, { transform: [{ scale: iconScale }] }]}>
+        <Animated.View style={[styles.iconLayer, { opacity: inactiveIconOpacity }]}>
+          <SavoryIcon
+            color={theme.colors.text}
+            glyph={Icon}
+            size={22}
+            strokeWidth={2.1}
+          />
+        </Animated.View>
+        <Animated.View style={[styles.iconLayer, { opacity: activeIconOpacity }]}>
+          <SavoryIcon
+            color={theme.colors.coral}
+            glyph={Icon}
           size={22}
-              color={active ? theme.colors.coral : theme.colors.text}
-              glyph={Icon}
-              strokeWidth={active ? 2.5 : 2.1}
-            />
+            strokeWidth={2.5}
+          />
+        </Animated.View>
       </Animated.View>
     </Pressable>
   );
@@ -163,6 +217,27 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     top: 0,
+  },
+  itemPulse: {
+    backgroundColor: "rgba(255, 107, 95, 0.2)",
+    borderColor: "rgba(255, 107, 95, 0.32)",
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  iconStack: {
+    alignItems: "center",
+    height: 24,
+    justifyContent: "center",
+    position: "relative",
+    width: 24,
+  },
+  iconLayer: {
+    position: "absolute",
   },
   itemPressed: {
     opacity: 0.62,
