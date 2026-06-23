@@ -8,6 +8,7 @@ import { BottomNav } from "../navigation/BottomNav";
 import { PlacesSearch } from "../search/PlacesSearch";
 import { RestaurantSaveSheet } from "../restaurant/RestaurantSaveSheet";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
+import { SlidingSegmentedControl } from "../ui/SlidingSegmentedControl";
 import { SAVORY_MAP_STYLE } from "../../constants/mapStyle";
 import { theme } from "../../constants/theme";
 import { trackAppEvent } from "../../services/appAnalytics";
@@ -883,24 +884,18 @@ export default function SavoryMap() {
           width={controlWidth}
         />
         {searchResultsVisible ? null : (
-          <View style={[styles.pinFilter, { width: pinFilterWidth }]}>
-            <PinFilterButton active={savedPinFilter === "all"} label="Todos" onPress={() => setSavedPinFilter("all")} />
-            <PinFilterButton
-              active={savedPinFilter === "visited"}
-              label="Visitados"
-              onPress={() => setSavedPinFilter("visited")}
-            />
-            <PinFilterButton
-              active={savedPinFilter === "want_to_go"}
-              label="Deseados"
-              onPress={() => setSavedPinFilter("want_to_go")}
-            />
-            <PinFilterButton
-              active={savedPinFilter === "groups"}
-              label="Grupos"
-              onPress={() => setSavedPinFilter("groups")}
-            />
-          </View>
+          <SlidingSegmentedControl
+            onChange={setSavedPinFilter}
+            options={[
+              { label: "Todos", value: "all" },
+              { label: "Visitados", value: "visited" },
+              { label: "Deseados", value: "want_to_go" },
+              { label: "Grupos", value: "groups" },
+            ]}
+            style={[styles.pinFilter, { width: pinFilterWidth }]}
+            textStyle={styles.pinFilterButtonText}
+            value={savedPinFilter}
+          />
         )}
       </View>
 
@@ -948,25 +943,6 @@ function useViewportWidth() {
   return width;
 }
 
-type PinFilterButtonProps = {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-};
-
-function PinFilterButton({ active, label, onPress }: PinFilterButtonProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      style={({ pressed }) => [styles.pinFilterButton, active && styles.pinFilterButtonActive, pressed && styles.pinFilterButtonPressed]}
-    >
-      <Text style={[styles.pinFilterButtonText, active && styles.pinFilterButtonTextActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const mapCanvasStyle: CSSProperties = {
   background: theme.colors.mapCanvas,
   bottom: 0,
@@ -1007,28 +983,11 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  pinFilterButton: {
-    alignItems: "center",
-    borderRadius: theme.radius.pill,
-    flex: 1,
-    height: 34,
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  pinFilterButtonActive: {
-    backgroundColor: theme.colors.coral,
-  },
-  pinFilterButtonPressed: {
-    opacity: 0.72,
-  },
   pinFilterButtonText: {
     color: theme.colors.textSoft,
     fontSize: 12,
     fontWeight: "900",
     lineHeight: 16,
-  },
-  pinFilterButtonTextActive: {
-    color: theme.colors.white,
   },
   bottomOverlay: {
     alignItems: "center",

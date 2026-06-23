@@ -21,6 +21,7 @@ import type {
 } from "../../types/restaurant";
 import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
+import { SlidingSegmentedControl } from "../ui/SlidingSegmentedControl";
 
 type RestaurantSaveSheetProps = {
   place: SavoryPlace;
@@ -718,24 +719,17 @@ type TargetChoiceProps = {
 
 function TargetChoice({ onChange, value }: TargetChoiceProps) {
   return (
-    <View style={styles.targetSegmented}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ selected: value === "personal" }}
-        onPress={() => onChange("personal")}
-        style={[styles.targetButton, value === "personal" && styles.segmentButtonActive]}
-      >
-        <Text style={[styles.segmentText, value === "personal" && styles.segmentTextActive]}>Lista personal</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ selected: value === "group" }}
-        onPress={() => onChange("group")}
-        style={[styles.targetButton, value === "group" && styles.segmentButtonActive]}
-      >
-        <Text style={[styles.segmentText, value === "group" && styles.segmentTextActive]}>Lista compartida</Text>
-      </Pressable>
-    </View>
+    <SlidingSegmentedControl
+      buttonStyle={styles.targetButton}
+      onChange={onChange}
+      options={[
+        { label: "Lista personal", value: "personal" },
+        { label: "Lista compartida", value: "group" },
+      ]}
+      style={styles.targetSegmented}
+      textStyle={styles.segmentText}
+      value={value}
+    />
   );
 }
 
@@ -804,22 +798,17 @@ function SegmentedChoice<T extends string>({ leftLabel, onChange, rightLabel, va
   const rightValue = rightLabel === "Público" ? "public" : "visited";
 
   return (
-    <View style={styles.segmented}>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => onChange(leftValue as T)}
-        style={[styles.segmentButton, value === leftValue && styles.segmentButtonActive]}
-      >
-        <Text style={[styles.segmentText, value === leftValue && styles.segmentTextActive]}>{leftLabel}</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => onChange(rightValue as T)}
-        style={[styles.segmentButton, value === rightValue && styles.segmentButtonActive]}
-      >
-        <Text style={[styles.segmentText, value === rightValue && styles.segmentTextActive]}>{rightLabel}</Text>
-      </Pressable>
-    </View>
+    <SlidingSegmentedControl
+      buttonStyle={styles.segmentButton}
+      onChange={onChange}
+      options={[
+        { label: leftLabel, value: leftValue as T },
+        { label: rightLabel, value: rightValue as T },
+      ]}
+      style={styles.segmented}
+      textStyle={styles.segmentText}
+      value={value}
+    />
   );
 }
 

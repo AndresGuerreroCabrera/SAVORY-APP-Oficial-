@@ -355,6 +355,16 @@ function SwipeableRecommendationCard({
     inputRange: [-220, 0, 220],
     outputRange: ["-7deg", "0deg", "7deg"],
   });
+  const leftTintOpacity = position.x.interpolate({
+    extrapolate: "clamp",
+    inputRange: [-240, -60, 0],
+    outputRange: [0.42, 0.12, 0],
+  });
+  const rightTintOpacity = position.x.interpolate({
+    extrapolate: "clamp",
+    inputRange: [0, 60, 240],
+    outputRange: [0, 0.12, 0.42],
+  });
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
@@ -400,6 +410,8 @@ function SwipeableRecommendationCard({
         },
       ]}
     >
+      <Animated.View pointerEvents="none" style={[styles.swipeGlow, styles.swipeGlowLeft, { opacity: leftTintOpacity }]} />
+      <Animated.View pointerEvents="none" style={[styles.swipeGlow, styles.swipeGlowRight, { opacity: rightTintOpacity }]} />
       <RecommendationCard
         maxHeight={maxHeight}
         recommendation={recommendation}
@@ -1008,8 +1020,26 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
   swipeCard: {
+    overflow: "visible",
     width: "100%",
     zIndex: 1,
+  },
+  swipeGlow: {
+    borderRadius: theme.radius.xl,
+    bottom: -20,
+    left: -20,
+    position: "absolute",
+    right: -20,
+    top: -20,
+    zIndex: 0,
+  },
+  swipeGlowLeft: {
+    backgroundColor: "rgba(239, 68, 68, 0.3)",
+    boxShadow: "0 0 38px 28px rgba(239, 68, 68, 0.42)",
+  },
+  swipeGlowRight: {
+    backgroundColor: "rgba(34, 197, 94, 0.28)",
+    boxShadow: "0 0 38px 28px rgba(34, 197, 94, 0.38)",
   },
   card: {
     ...floatingShadow,
@@ -1020,6 +1050,7 @@ const styles = StyleSheet.create({
     gap: 12,
     overflow: "hidden",
     padding: 16,
+    zIndex: 2,
   },
   cardTitle: {
     color: theme.colors.text,

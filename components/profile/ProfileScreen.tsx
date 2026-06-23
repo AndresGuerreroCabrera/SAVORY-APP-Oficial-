@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomNav } from "../navigation/BottomNav";
 import { ImageLightbox } from "../ui/ImageLightbox";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
+import { SlidingSegmentedControl } from "../ui/SlidingSegmentedControl";
 import { floatingShadow, theme } from "../../constants/theme";
 import { trackAppEvent } from "../../services/appAnalytics";
 import { compressImageFile } from "../../services/imageCompression";
@@ -729,7 +730,20 @@ export function ProfileScreen({ authOnly = false }: ProfileScreenProps) {
               </View>
             ) : (
               <View style={styles.sectionGap}>
-                <View style={styles.segmented}>
+                <SlidingSegmentedControl
+                  activeTextStyle={styles.modeButtonTextActive}
+                  buttonStyle={styles.modeButton}
+                  indicatorStyle={styles.modeButtonActive}
+                  onChange={setMode}
+                  options={[
+                    { label: "Iniciar sesión", value: "login" },
+                    { label: "Registro", value: "register" },
+                  ]}
+                  style={styles.segmented}
+                  textStyle={styles.modeButtonText}
+                  value={mode}
+                />
+                <View style={styles.legacyHidden}>
                   <ModeButton active={mode === "login"} label="Iniciar sesión" onPress={() => setMode("login")} />
                   <ModeButton active={mode === "register"} label="Registro" onPress={() => setMode("register")} />
                 </View>
@@ -2007,6 +2021,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 4,
     padding: 4,
+  },
+  legacyHidden: {
+    display: "none",
   },
   modeButton: {
     alignItems: "center",

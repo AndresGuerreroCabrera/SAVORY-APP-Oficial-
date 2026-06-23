@@ -24,6 +24,7 @@ import { SavedRestaurantList } from "../restaurant/SavedRestaurantList";
 import { RestaurantSaveSheet } from "../restaurant/RestaurantSaveSheet";
 import { StandalonePlacesSearch } from "../search/StandalonePlacesSearch";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
+import { SlidingSegmentedControl } from "../ui/SlidingSegmentedControl";
 import { emptyRestaurantFilters, FiltersDropdown } from "./FiltersDropdown";
 import { ListBackButton } from "./ListBackButton";
 import { ListPageShell } from "./ListPageShell";
@@ -148,24 +149,20 @@ export function GroupDetailScreen() {
                 </View>
               </Pressable>
 
-              <View style={styles.segmented}>
-                <SegmentButton
-                  active={status === "visited"}
-                  label="Visitados"
-                  onPress={() => {
-                    setStatus("visited");
-                    setFilters(emptyRestaurantFilters());
-                  }}
-                />
-                <SegmentButton
-                  active={status === "want_to_go"}
-                  label="Deseados"
-                  onPress={() => {
-                    setStatus("want_to_go");
-                    setFilters(emptyRestaurantFilters());
-                  }}
-                />
-              </View>
+              <SlidingSegmentedControl
+                buttonStyle={styles.segmentButton}
+                onChange={(nextStatus) => {
+                  setStatus(nextStatus);
+                  setFilters(emptyRestaurantFilters());
+                }}
+                options={[
+                  { label: "Visitados", value: "visited" },
+                  { label: "Deseados", value: "want_to_go" },
+                ]}
+                style={styles.segmented}
+                textStyle={styles.segmentText}
+                value={status}
+              />
 
               <FiltersDropdown
                 filters={filters}
@@ -644,25 +641,6 @@ function GroupSettingsSheet({
         </ScrollView>
       </View>
     </View>
-  );
-}
-
-type SegmentButtonProps = {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-};
-
-function SegmentButton({ active, label, onPress }: SegmentButtonProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      style={({ pressed }) => [styles.segmentButton, active && styles.segmentButtonActive, pressed && styles.pressed]}
-    >
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
-    </Pressable>
   );
 }
 
