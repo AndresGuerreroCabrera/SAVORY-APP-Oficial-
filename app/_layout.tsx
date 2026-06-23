@@ -8,6 +8,7 @@ import { VercelAnalytics } from "../components/analytics/VercelAnalytics";
 import { VercelSpeedInsights } from "../components/analytics/VercelSpeedInsights";
 import { ProductAnalyticsTracker } from "../components/analytics/ProductAnalyticsTracker";
 import { InitialSplash } from "../components/ui/InitialSplash";
+import { WebFavicon } from "../components/ui/WebFavicon";
 
 export default function RootLayout() {
   return (
@@ -15,6 +16,7 @@ export default function RootLayout() {
       <View style={styles.root}>
         <StatusBar style="dark" />
         <AuthGate>
+          <WebFavicon />
           <Stack screenOptions={{ headerShown: false }} />
           <ProductAnalyticsTracker />
           <VercelAnalytics />
