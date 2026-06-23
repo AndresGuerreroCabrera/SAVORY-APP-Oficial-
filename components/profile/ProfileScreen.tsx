@@ -76,6 +76,8 @@ const webInputReset: TextStyle & {
   outline: "none",
 };
 const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
+const feedbackInputPlatformStyle =
+  Platform.OS === "web" ? { ...webInputReset, caretColor: theme.colors.white } : null;
 const MAX_PROFILE_PHOTO_INPUT_BYTES = 6 * 1024 * 1024;
 const PROFILE_PHOTO_MAX_EDGE = 720;
 const PROFILE_PHOTO_QUALITY = 0.78;
@@ -112,6 +114,10 @@ export function ProfileScreen({ authOnly = false }: ProfileScreenProps) {
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [previewProfilePhoto, setPreviewProfilePhoto] = useState<{ caption: string; uri: string } | null>(null);
   const overlayWidth = Math.max(280, viewportWidth - 36);
   const contentWidth = Math.min(overlayWidth, 520);
@@ -235,6 +241,20 @@ export function ProfileScreen({ authOnly = false }: ProfileScreenProps) {
   useEffect(() => {
     setNextUsername(profile?.username ?? "");
   }, [profile?.username]);
+
+  useEffect(() => {
+    if (!feedbackMessage) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setFeedbackMessage(null);
+    }, 2000);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [feedbackMessage]);
 
   const resetFeedback = useCallback(() => {
     setError(null);
@@ -487,6 +507,55 @@ export function ProfileScreen({ authOnly = false }: ProfileScreenProps) {
     setRegistrationAvatar(null);
     setMessage("Te hemos enviado un correo de confirmación. Abre tu email y confirma la cuenta para poder iniciar sesión.");
   }, [confirmPassword, email, password, registrationAvatar, resetAuthFields, resetFeedback, username]);
+
+  const handleAppFeedbackSubmit = useCallback(async () => {
+    const trimmedFeedback = feedbackText.trim();
+
+    setFeedbackError(null);
+    setFeedbackMessage(null);
+
+    if (!trimmedFeedback) {
+      setFeedbackError("Escribe un comentario antes de enviarlo.");
+      return;
+    }
+
+    if (!supabase || !session) {
+      setFeedbackError("Inicia sesiÃ³n para enviar comentarios.");
+      return;
+    }
+
+    setFeedbackSubmitting(true);
+
+    const { error: insertError } = await supabase.from("app_feedback_responses").insert({
+      metadata: {
+        route: "/profile",
+        source: "profile_footer",
+      },
+      question_key: "open_comment",
+      survey_name: "profile_footer_feedback",
+      text_value: trimmedFeedback,
+      user_id: session.user.id,
+    });
+
+    setFeedbackSubmitting(false);
+
+    if (insertError) {
+      setFeedbackError(getSupabaseUiError(insertError, "No se pudo enviar el comentario. IntÃ©ntalo de nuevo."));
+      return;
+    }
+
+    setFeedbackText("");
+    setFeedbackMessage("Comentario enviado. Gracias por ayudar a mejorar Savory.");
+    void trackAppEvent({
+      entityId: "profile_footer_feedback",
+      entityType: "feedback",
+      eventName: "app_feedback_submitted",
+      metadata: {
+        source: "profile_footer",
+      },
+      route: "/profile",
+    });
+  }, [feedbackText, session]);
 
   const handlePasswordChange = useCallback(async () => {
     resetFeedback();
@@ -835,6 +904,26 @@ export function ProfileScreen({ authOnly = false }: ProfileScreenProps) {
           {isSupabaseConfigured && session && !authOnly ? (
             <FriendsConnectorSection contentWidth={contentWidth} session={session} />
           ) : null}
+
+          {isSupabaseConfigured && session && !authOnly ? (
+            <AppFeedbackFooter
+              error={feedbackError}
+              message={feedbackMessage}
+              submitting={feedbackSubmitting}
+              text={feedbackText}
+              width={contentWidth}
+              onChangeText={(value) => {
+                setFeedbackText(value);
+                if (feedbackError) {
+                  setFeedbackError(null);
+                }
+                if (feedbackMessage) {
+                  setFeedbackMessage(null);
+                }
+              }}
+              onSubmit={handleAppFeedbackSubmit}
+            />
+          ) : null}
         </ScrollView>
       </SafeAreaView>
 
@@ -973,6 +1062,63 @@ function AuthInput({
         style={[styles.input, inputPlatformStyle]}
         value={value}
       />
+    </View>
+  );
+}
+
+type AppFeedbackFooterProps = {
+  error: string | null;
+  message: string | null;
+  submitting: boolean;
+  text: string;
+  width: number;
+  onChangeText: (value: string) => void;
+  onSubmit: () => void;
+};
+
+function AppFeedbackFooter({
+  error,
+  message,
+  submitting,
+  text,
+  width,
+  onChangeText,
+  onSubmit,
+}: AppFeedbackFooterProps) {
+  return (
+    <View style={[styles.feedbackFooter, { width }]}>
+      <Text style={styles.feedbackFooterTitle}>Cuéntanos qué mejorar</Text>
+      <Text style={styles.feedbackFooterDescription}>
+        Envía cualquier comentario sobre la app: ideas, posibles mejoras, quejas o cosas que no funcionen como esperas.
+      </Text>
+      <TextInput
+        multiline
+        onChangeText={onChangeText}
+        placeholder="Escribe tu comentario"
+        placeholderTextColor="rgba(255,255,255,0.52)"
+        selectionColor={theme.colors.coral}
+        style={[styles.feedbackFooterInput, feedbackInputPlatformStyle]}
+        textAlignVertical="top"
+        value={text}
+      />
+      {message ? <Text style={styles.feedbackFooterSuccess}>{message}</Text> : null}
+      {error ? <Text style={styles.feedbackFooterError}>{error}</Text> : null}
+      <Pressable
+        accessibilityRole="button"
+        disabled={submitting}
+        onPress={onSubmit}
+        style={({ pressed }) => [
+          styles.feedbackFooterButton,
+          submitting && styles.buttonDisabled,
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        {submitting ? (
+          <ActivityIndicator color={theme.colors.text} />
+        ) : (
+          <Text style={styles.feedbackFooterButtonText}>Enviar</Text>
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -2062,6 +2208,63 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     height: "100%",
     minWidth: 0,
+  },
+  feedbackFooter: {
+    backgroundColor: "#050505",
+    borderRadius: theme.radius.xl,
+    gap: 12,
+    marginTop: 14,
+    padding: 18,
+  },
+  feedbackFooterTitle: {
+    color: theme.colors.white,
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 25,
+  },
+  feedbackFooterDescription: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  feedbackFooterInput: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.16)",
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    color: theme.colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+    minHeight: 112,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  feedbackFooterButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radius.pill,
+    height: 48,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  feedbackFooterButtonText: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 18,
+  },
+  feedbackFooterSuccess: {
+    color: "#86EFAC",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  feedbackFooterError: {
+    color: "#FCA5A5",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
   },
   photoPicker: {
     alignItems: "center",
