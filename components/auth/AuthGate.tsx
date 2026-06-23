@@ -1,11 +1,13 @@
 import type { Session } from "@supabase/supabase-js";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 
 import { theme } from "../../constants/theme";
 import { isSupabaseConfigured, supabase } from "../../services/supabase";
 import { ProfileScreen } from "../profile/ProfileScreen";
+
+const splashImage = require("../../assets/splash.jpeg");
 
 type AuthGateProps = {
   children: ReactNode;
@@ -52,8 +54,7 @@ export function AuthGate({ children }: AuthGateProps) {
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator color={theme.colors.coral} />
-        <Text style={styles.loadingText}>Cargando sesion</Text>
+        <Image resizeMode="contain" source={splashImage} style={styles.loadingImage} />
       </View>
     );
   }
@@ -68,15 +69,12 @@ export function AuthGate({ children }: AuthGateProps) {
 const styles = StyleSheet.create({
   loadingScreen: {
     alignItems: "center",
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.coral,
     flex: 1,
-    gap: 10,
     justifyContent: "center",
   },
-  loadingText: {
-    color: theme.colors.muted,
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 18,
+  loadingImage: {
+    height: "100%",
+    width: "100%",
   },
 });

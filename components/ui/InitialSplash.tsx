@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 
 import { theme } from "../../constants/theme";
 
 const SPLASH_DURATION_MS = 900;
+const splashImage = require("../../assets/splash.jpeg");
 
 export function InitialSplash() {
   const [visible, setVisible] = useState(true);
@@ -20,7 +21,7 @@ export function InitialSplash() {
 
   return (
     <View pointerEvents="none" style={styles.overlay}>
-      <Text style={styles.title}>Savory</Text>
+      <Image resizeMode="contain" source={splashImage} style={styles.image} />
     </View>
   );
 }
@@ -37,11 +38,8 @@ const styles = StyleSheet.create({
     top: 0,
     zIndex: 9999,
   },
-  title: {
-    color: theme.colors.white,
-    fontSize: 42,
-    fontWeight: "900",
-    letterSpacing: 0,
-    lineHeight: 50,
+  image: {
+    height: "100%",
+    width: "100%",
   },
 });

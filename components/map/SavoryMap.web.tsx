@@ -138,31 +138,17 @@ function searchPlacesNearUser(
   });
 }
 
-function getSavedPinColor(restaurant: SavedRestaurantRecord) {
-  if (restaurant.status === "want_to_go") {
-    return "#7C3AED";
-  }
-
-  return restaurant.visibility === "public" ? "#1A73E8" : "#D93025";
-}
-
-function getMapPinColor(pin: MapRestaurantPin) {
-  if (pin.kind === "group") {
-    return "#16A34A";
-  }
-
-  return getSavedPinColor(pin.restaurant);
-}
+const SAVED_PIN_COLOR = "#FF6B5F";
 
 function createSavedPinIcon(color: string): google.maps.Symbol {
   return {
-    anchor: new google.maps.Point(0, -1),
+    anchor: new google.maps.Point(0, 0),
     fillColor: color,
     fillOpacity: 1,
     path: "M0 0 C-2.7-4.2-7-8.7-7-13.5 A7 7 0 1 1 7-13.5 C7-8.7 2.7-4.2 0 0 Z",
-    scale: 1.35,
+    scale: 1.55,
     strokeColor: theme.colors.white,
-    strokeWeight: 2,
+    strokeWeight: 2.2,
   };
 }
 
@@ -355,7 +341,7 @@ export default function SavoryMap() {
         lng: restaurant.location_lng,
       };
       const marker = new google.maps.Marker({
-        icon: createSavedPinIcon(getMapPinColor(pin)),
+        icon: createSavedPinIcon(SAVED_PIN_COLOR),
         map,
         optimized: true,
         position,
@@ -372,8 +358,18 @@ export default function SavoryMap() {
         });
         const phoneUrl = restaurant.phone ? getPhoneUrl(restaurant.phone) : null;
         const websiteUrl = restaurant.website ? getWebsiteUrl(restaurant.website) : null;
+        const statusLabel = restaurant.status === "visited" ? "Visitado" : "Deseado";
+        const visibilityLabel = restaurant.visibility === "public" ? "P&uacute;blico" : "Privado";
         const groupUrl = pin.kind === "group" ? `/group/${encodeURIComponent(pin.restaurant.group_id)}` : null;
-        const groupMeta =
+        const listUrl =
+          pin.kind === "group"
+            ? `/group/${encodeURIComponent(pin.restaurant.group_id)}?status=${encodeURIComponent(
+                restaurant.status,
+              )}&openPlaceId=${encodeURIComponent(restaurant.google_place_id)}`
+            : `/${restaurant.status === "visited" ? "list" : "wishlist"}?openPlaceId=${encodeURIComponent(
+                restaurant.google_place_id,
+              )}`;
+        const listMeta =
           pin.kind === "group"
             ? `
               <div style="margin-top: 8px;">
@@ -386,7 +382,7 @@ export default function SavoryMap() {
                   text-transform: uppercase;
                 ">Grupo</span>
                 <a href="${groupUrl}" style="
-                  color: #16A34A;
+                  color: #FF6B5F;
                   display: inline-block;
                   font-size: 12px;
                   font-weight: 850;
@@ -404,14 +400,14 @@ export default function SavoryMap() {
               ">
                 <span style="
                   background: #ECFDF3;
-                  border: 1px solid #BBF7D0;
+                  border: 1px solid #FFDAD5;
                   border-radius: 999px;
-                  color: #166534;
+                  color: #2C2E31;
                   font-size: 11px;
                   font-weight: 850;
                   line-height: 14px;
                   padding: 4px 8px;
-                ">${restaurant.status === "visited" ? "Visitado" : "Deseado"}</span>
+                ">${statusLabel}</span>
                 <span style="
                   background: #FFF0EE;
                   border: 1px solid #FFDAD5;
@@ -421,10 +417,57 @@ export default function SavoryMap() {
                   font-weight: 850;
                   line-height: 14px;
                   padding: 4px 8px;
-                ">${restaurant.visibility === "public" ? "Público" : "Privado"}</span>
+                ">${visibilityLabel}</span>
               </div>
             `
-            : "";
+            : `
+              <div style="margin-top: 8px;">
+                <span style="
+                  color: #777B80;
+                  display: block;
+                  font-size: 11px;
+                  font-weight: 850;
+                  line-height: 14px;
+                  text-transform: uppercase;
+                ">Lista</span>
+                <span style="
+                  color: #FF6B5F;
+                  display: inline-block;
+                  font-size: 12px;
+                  font-weight: 850;
+                  line-height: 16px;
+                  max-width: 190px;
+                ">Lista personal</span>
+              </div>
+              <div style="
+                color: #2C2E31;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 8px;
+              ">
+                <span style="
+                  background: #FFF0EE;
+                  border: 1px solid #FFDAD5;
+                  border-radius: 999px;
+                  color: #2C2E31;
+                  font-size: 11px;
+                  font-weight: 850;
+                  line-height: 14px;
+                  padding: 4px 8px;
+                ">${statusLabel}</span>
+                <span style="
+                  background: #FFF0EE;
+                  border: 1px solid #FFDAD5;
+                  border-radius: 999px;
+                  color: #2C2E31;
+                  font-size: 11px;
+                  font-weight: 850;
+                  line-height: 14px;
+                  padding: 4px 8px;
+                ">${visibilityLabel}</span>
+              </div>
+            `;
         const content = `
           <div style="
             box-sizing: border-box;
@@ -432,7 +475,7 @@ export default function SavoryMap() {
             max-width: 220px;
             padding: 2px 0;
           ">
-            <strong style="
+            <a href="${listUrl}" style="
               color: #111214;
               display: block;
               font-size: 13px;
@@ -440,7 +483,8 @@ export default function SavoryMap() {
               line-height: 17px;
               margin-bottom: 7px;
               max-width: 200px;
-            ">${escapeHtml(restaurant.name)}</strong>
+              text-decoration: none;
+            ">${escapeHtml(restaurant.name)}</a>
             ${
               restaurant.address
                 ? `<a href="${mapsUrl}" target="_blank" rel="noreferrer" style="
@@ -490,7 +534,7 @@ export default function SavoryMap() {
                   </div>`
                 : ""
             }
-            ${groupMeta}
+            ${listMeta}
           </div>
         `;
 

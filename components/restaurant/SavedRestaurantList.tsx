@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { ChevronRight, Edit3, Plus, Trash2, X } from "lucide-react-native";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { GestureResponderEvent, ViewProps } from "react-native";
 
@@ -35,6 +35,7 @@ type SavedRestaurantListProps = {
   contentWidth: number;
   filters?: RestaurantFilters;
   groupId?: string;
+  openPlaceId?: string;
   publicUserId?: string;
   status: SavedRestaurantStatus;
 };
@@ -51,8 +52,9 @@ const NextIcon = ChevronRight as SavoryIconGlyph;
 const PlusIcon = Plus as SavoryIconGlyph;
 const TrashIcon = Trash2 as SavoryIconGlyph;
 
-export function SavedRestaurantList({ contentWidth, filters, groupId, publicUserId, status }: SavedRestaurantListProps) {
+export function SavedRestaurantList({ contentWidth, filters, groupId, openPlaceId, publicUserId, status }: SavedRestaurantListProps) {
   const router = useRouter();
+  const openedPlaceIdRef = useRef<string | null>(null);
   const [records, setRecords] = useState<SavedRestaurantRecord[]>([]);
   const [summaries, setSummaries] = useState<Map<string, RestaurantCommunitySummary>>(new Map());
   const [communityVisitors, setCommunityVisitors] = useState<Map<string, RestaurantCommunityVisitor[]>>(new Map());
@@ -117,6 +119,29 @@ export function SavedRestaurantList({ contentWidth, filters, groupId, publicUser
   useEffect(() => {
     void loadRestaurants();
   }, [loadRestaurants]);
+
+  useEffect(() => {
+    openedPlaceIdRef.current = null;
+  }, [openPlaceId]);
+
+  useEffect(() => {
+    if (!openPlaceId || loading || openedPlaceIdRef.current === openPlaceId) {
+      return;
+    }
+
+    const record = records.find((item) => item.google_place_id === openPlaceId || item.id === openPlaceId);
+
+    if (!record) {
+      return;
+    }
+
+    openedPlaceIdRef.current = openPlaceId;
+    setSelectedRestaurant({
+      record,
+      summary: summaries.get(record.google_place_id),
+      visitors: communityVisitors.get(record.google_place_id) ?? [],
+    });
+  }, [communityVisitors, loading, openPlaceId, records, summaries]);
 
   const handleDeleteRestaurant = useCallback(
     async (record: SavedRestaurantRecord) => {

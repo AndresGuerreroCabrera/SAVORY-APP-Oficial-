@@ -57,12 +57,15 @@ const inputPlatformStyle = Platform.OS === "web" ? webInputReset : null;
 
 export function GroupDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; openPlaceId?: string | string[]; status?: string | string[] }>();
   const groupId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const openPlaceId = Array.isArray(params.openPlaceId) ? params.openPlaceId[0] : params.openPlaceId;
+  const requestedStatus = Array.isArray(params.status) ? params.status[0] : params.status;
+  const initialStatus: SavedRestaurantStatus = requestedStatus === "want_to_go" ? "want_to_go" : "visited";
   const [group, setGroup] = useState<GroupSummary | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [status, setStatus] = useState<SavedRestaurantStatus>("visited");
+  const [status, setStatus] = useState<SavedRestaurantStatus>(initialStatus);
   const [filters, setFilters] = useState<RestaurantFilters>(emptyRestaurantFilters);
   const [selectedPlace, setSelectedPlace] = useState<SavoryPlace | null>(null);
   const [listVersion, setListVersion] = useState(0);
@@ -111,6 +114,12 @@ export function GroupDetailScreen() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (requestedStatus === "visited" || requestedStatus === "want_to_go") {
+      setStatus(requestedStatus);
+    }
+  }, [requestedStatus]);
 
   return (
     <ListPageShell title={group?.name ?? "Grupo"}>
@@ -176,7 +185,8 @@ export function GroupDetailScreen() {
                 contentWidth={contentWidth}
                 filters={filters}
                 groupId={groupId}
-                key={`${groupId}-${status}-${listVersion}`}
+                key={`${groupId}-${status}-${listVersion}-${openPlaceId ?? ""}`}
+                openPlaceId={openPlaceId}
                 status={status}
               />
 

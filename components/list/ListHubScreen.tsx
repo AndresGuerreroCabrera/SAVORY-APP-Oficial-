@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -10,6 +10,8 @@ import { SavedRestaurantList } from "../restaurant/SavedRestaurantList";
 
 export function ListHubScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ openPlaceId?: string | string[] }>();
+  const openPlaceId = Array.isArray(params.openPlaceId) ? params.openPlaceId[0] : params.openPlaceId;
   const [filters, setFilters] = useState<RestaurantFilters>(emptyRestaurantFilters);
 
   return (
@@ -40,7 +42,7 @@ export function ListHubScreen() {
             onChange={setFilters}
             width={contentWidth}
           />
-          <SavedRestaurantList contentWidth={contentWidth} filters={filters} status="visited" />
+          <SavedRestaurantList contentWidth={contentWidth} filters={filters} openPlaceId={openPlaceId} status="visited" />
         </View>
       )}
     </ListPageShell>

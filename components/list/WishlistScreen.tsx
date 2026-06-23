@@ -1,4 +1,5 @@
 import { StyleSheet, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 
 import type { RestaurantFilters } from "../../types/restaurant";
@@ -8,6 +9,8 @@ import { ListPageShell } from "./ListPageShell";
 import { SavedRestaurantList } from "../restaurant/SavedRestaurantList";
 
 export function WishlistScreen() {
+  const params = useLocalSearchParams<{ openPlaceId?: string | string[] }>();
+  const openPlaceId = Array.isArray(params.openPlaceId) ? params.openPlaceId[0] : params.openPlaceId;
   const [filters, setFilters] = useState<RestaurantFilters>(emptyRestaurantFilters);
 
   return (
@@ -20,7 +23,7 @@ export function WishlistScreen() {
             onChange={setFilters}
             width={contentWidth}
           />
-          <SavedRestaurantList contentWidth={contentWidth} filters={filters} status="want_to_go" />
+          <SavedRestaurantList contentWidth={contentWidth} filters={filters} openPlaceId={openPlaceId} status="want_to_go" />
         </View>
       )}
     </ListPageShell>
