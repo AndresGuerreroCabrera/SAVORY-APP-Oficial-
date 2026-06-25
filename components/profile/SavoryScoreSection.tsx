@@ -22,6 +22,7 @@ import {
   getSavoryScoreRanking,
   type SavoryScoreProfile,
 } from "../../services/savoryScore";
+import { InfoButton } from "../ui/InfoButton";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
 type SavoryScoreSectionProps = {
@@ -32,6 +33,8 @@ type SavoryScoreSectionProps = {
 const CloseIcon = X as SavoryIconGlyph;
 const SearchIcon = Search as SavoryIconGlyph;
 const TrophyIcon = Trophy as SavoryIconGlyph;
+const SAVORY_SCORE_INFO =
+  "Savory Score mide cuánto ayudan tus aportaciones públicas a otros usuarios. Sube cuando otras personas ven, guardan, añaden a grupos o marcan como visitados restaurantes que compartiste. No premia simplemente guardar muchos sitios, sino aportar recomendaciones útiles para la comunidad.";
 
 const webInputReset: TextStyle & {
   boxShadow?: string;
@@ -125,7 +128,10 @@ export function SavoryScoreSection({ contentWidth, currentUserId }: SavoryScoreS
           <SavoryIcon color={theme.colors.coral} glyph={TrophyIcon} size={20} strokeWidth={2.3} />
         </View>
         <View style={styles.headerText}>
-          <Text style={styles.title}>Savory Score</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Savory Score</Text>
+            <InfoButton body={SAVORY_SCORE_INFO} title="Savory Score" />
+          </View>
           <Text style={styles.subtitle}>Nivel {displayScore.level.levelNumber} - {displayScore.level.name}</Text>
         </View>
       </View>
@@ -308,6 +314,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "900",
     lineHeight: 25,
+  },
+  titleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
   },
   subtitle: {
     color: theme.colors.muted,

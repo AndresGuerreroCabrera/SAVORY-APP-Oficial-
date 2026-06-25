@@ -20,6 +20,7 @@ import type {
   SavedRestaurantVisibility,
 } from "../../types/restaurant";
 import { ImageLightbox } from "../ui/ImageLightbox";
+import { InfoButton } from "../ui/InfoButton";
 import { PhotoCarousel } from "../ui/PhotoCarousel";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { SlidingSegmentedControl } from "../ui/SlidingSegmentedControl";
@@ -46,6 +47,8 @@ type SaveTarget = "personal" | "group";
 const CameraIcon = Camera as SavoryIconGlyph;
 const CloseIcon = X as SavoryIconGlyph;
 const BackIcon = ChevronLeft as SavoryIconGlyph;
+const VISIBILITY_INFO =
+  "Privado: solo lo ves tú y no aparece en feed, recomendaciones ni perfiles públicos. Público: otros usuarios pueden verlo como recomendación, en tu perfil o en el feed, y sus interacciones pueden ayudarte a subir tu Savory Score.";
 
 const RATING_VALUES = Array.from({ length: 21 }, (_, index) => index / 2);
 const MAX_PHOTO_INPUT_BYTES = 8 * 1024 * 1024;
@@ -661,7 +664,10 @@ export function RestaurantSaveSheet({
 
             {step === "visibility" ? (
               <View style={styles.stepArea}>
-                <FormSubsection title="Visibilidad">
+                <FormSubsection
+                  title="Visibilidad"
+                  accessory={<InfoButton body={VISIBILITY_INFO} title="Público o privado" />}
+                >
                 <SegmentedChoice
                   leftLabel="Privado"
                   onChange={setVisibility}
@@ -853,12 +859,15 @@ type SearchableChipCloudProps = ChipCloudProps & {
   placeholder: string;
 };
 
-function FormSubsection({ children, title }: { children: ReactNode; title: string }) {
+function FormSubsection({ accessory, children, title }: { accessory?: ReactNode; children: ReactNode; title: string }) {
   return (
     <View style={styles.formSubsection}>
       <View style={styles.formSubsectionHeader}>
         <View style={styles.formSubsectionAccent} />
-        <Text style={styles.formSubsectionTitle}>{title}</Text>
+        <View style={styles.formSubsectionTitleRow}>
+          <Text style={styles.formSubsectionTitle}>{title}</Text>
+          {accessory}
+        </View>
       </View>
       {children}
     </View>
@@ -1412,6 +1421,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     lineHeight: 17,
+  },
+  formSubsectionTitleRow: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    minWidth: 0,
   },
   stepHeader: {
     alignItems: "center",
