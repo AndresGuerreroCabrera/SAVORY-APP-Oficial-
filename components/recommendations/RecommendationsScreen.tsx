@@ -39,6 +39,7 @@ import type {
 } from "../../types/restaurant";
 import { BottomNav } from "../navigation/BottomNav";
 import { ImageLightbox } from "../ui/ImageLightbox";
+import { PhotoCarousel } from "../ui/PhotoCarousel";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { emptyRestaurantFilters, FiltersDropdown } from "../list/FiltersDropdown";
 
@@ -721,23 +722,7 @@ function PhotoStrip({
     return null;
   }
 
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-      <View style={styles.photoStrip}>
-        {photos.map((photo, index) => (
-          <Pressable
-            accessibilityRole="imagebutton"
-            key={`${photo.fileName}-${index}`}
-            onPress={() => onPreview(photo)}
-            style={({ pressed }) => [styles.photoItem, pressed && styles.pressed]}
-          >
-            {photo.dataUrl ? <Image source={{ uri: photo.dataUrl }} style={styles.photoImage} /> : null}
-            {photo.caption?.trim() ? <Text numberOfLines={1} style={styles.photoCaption}>{photo.caption.trim()}</Text> : null}
-          </Pressable>
-        ))}
-      </View>
-    </ScrollView>
-  );
+  return <PhotoCarousel photos={photos} onPreview={onPreview} />;
 }
 
 function LocationSearchInput({
@@ -1170,35 +1155,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 16,
-  },
-  photoScroll: {
-    marginTop: 12,
-  },
-  photoStrip: {
-    flexDirection: "row",
-    gap: 10,
-    paddingVertical: 2,
-  },
-  photoItem: {
-    backgroundColor: theme.colors.surfaceSoft,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    gap: 5,
-    padding: 7,
-    width: 118,
-  },
-  photoImage: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.radius.sm,
-    height: 88,
-    width: "100%",
-  },
-  photoCaption: {
-    color: theme.colors.textSoft,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 14,
   },
   commentPreview: {
     alignItems: "flex-start",

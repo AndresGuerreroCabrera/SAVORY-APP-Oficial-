@@ -28,6 +28,7 @@ import type {
   SavedRestaurantStatus,
 } from "../../types/restaurant";
 import { ImageLightbox } from "../ui/ImageLightbox";
+import { PhotoCarousel } from "../ui/PhotoCarousel";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { RestaurantSaveSheet } from "./RestaurantSaveSheet";
 
@@ -941,24 +942,7 @@ function PhotoStrip({ photos }: PhotoStripProps) {
 
   return (
     <>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-        <View style={styles.photoStrip}>
-          {photos.map((photo, index) => (
-            <View key={`${photo.fileName}-${index}`} style={styles.photoItem}>
-              {photo.dataUrl ? (
-                <Pressable accessibilityRole="imagebutton" onPress={() => setSelectedPhoto(photo)} style={({ pressed }) => pressed && styles.pressed}>
-                  <Image source={{ uri: photo.dataUrl }} style={styles.photoImage} />
-                </Pressable>
-              ) : null}
-              {photo.caption?.trim() ? (
-                <Text numberOfLines={2} style={styles.photoCaption}>
-                  {photo.caption.trim()}
-                </Text>
-              ) : null}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
+      <PhotoCarousel photos={photos} onPreview={setSelectedPhoto} />
       <ImageLightbox
         caption={selectedPhoto?.caption?.trim() || null}
         imageUri={selectedPhoto?.dataUrl ?? null}
@@ -1486,34 +1470,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     lineHeight: 18,
-  },
-  photoScroll: {
-    marginTop: 2,
-  },
-  photoStrip: {
-    flexDirection: "row",
-    gap: 12,
-    paddingVertical: 2,
-  },
-  photoItem: {
-    backgroundColor: theme.colors.surfaceSoft,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    gap: 7,
-    padding: 8,
-    width: 142,
-  },
-  photoImage: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.radius.md,
-    height: 112,
-    width: "100%",
-  },
-  photoCaption: {
-    color: theme.colors.textSoft,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
   },
 });

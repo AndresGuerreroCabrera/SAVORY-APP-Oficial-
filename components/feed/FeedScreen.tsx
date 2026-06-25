@@ -26,6 +26,7 @@ import type { RestaurantPhoto, SavedRestaurantRecord } from "../../types/restaur
 import { BottomNav } from "../navigation/BottomNav";
 import { RestaurantSaveSheet } from "../restaurant/RestaurantSaveSheet";
 import { ImageLightbox } from "../ui/ImageLightbox";
+import { PhotoCarousel } from "../ui/PhotoCarousel";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 
 const BookmarkIcon = Bookmark as SavoryIconGlyph;
@@ -371,23 +372,7 @@ function RestaurantSummary({
         ) : null}
       </Pressable>
 
-      {photos.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-          <View style={styles.photoStrip}>
-            {photos.map((photo, index) => (
-              <Pressable
-                accessibilityRole="imagebutton"
-                key={`${photo.fileName}-${index}`}
-                onPress={() => onPreviewPhoto(photo)}
-                style={({ pressed }) => [styles.photoItem, pressed && styles.pressed]}
-              >
-                {photo.dataUrl ? <Image source={{ uri: photo.dataUrl }} style={styles.photoImage} /> : null}
-                {photo.caption?.trim() ? <Text numberOfLines={1} style={styles.photoCaption}>{photo.caption.trim()}</Text> : null}
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
-      ) : null}
+      {photos.length > 0 ? <PhotoCarousel compact={compact} photos={photos} onPreview={onPreviewPhoto} /> : null}
     </View>
   );
 }
@@ -854,35 +839,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 10,
     padding: 12,
-  },
-  photoScroll: {
-    marginTop: 2,
-  },
-  photoStrip: {
-    flexDirection: "row",
-    gap: 10,
-    paddingVertical: 2,
-  },
-  photoItem: {
-    backgroundColor: theme.colors.surfaceSoft,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    gap: 5,
-    padding: 7,
-    width: 118,
-  },
-  photoImage: {
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.radius.sm,
-    height: 88,
-    width: "100%",
-  },
-  photoCaption: {
-    color: theme.colors.textSoft,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 14,
   },
   saveButton: {
     alignItems: "center",

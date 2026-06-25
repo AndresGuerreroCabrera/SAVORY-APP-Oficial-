@@ -20,6 +20,7 @@ import type {
   SavedRestaurantVisibility,
 } from "../../types/restaurant";
 import { ImageLightbox } from "../ui/ImageLightbox";
+import { PhotoCarousel } from "../ui/PhotoCarousel";
 import { SavoryIcon, type SavoryIconGlyph } from "../ui/SavoryIcon";
 import { SlidingSegmentedControl } from "../ui/SlidingSegmentedControl";
 
@@ -953,13 +954,10 @@ function PhotoPicker({ buttonLabel, inputRef, kind, onCaptionChange, onPick, onP
         <SavoryIcon color={theme.colors.coral} glyph={CameraIcon} size={18} strokeWidth={2.2} />
         <Text style={styles.photoButtonText}>{buttonLabel}</Text>
       </Pressable>
+      {photos.length > 0 ? <PhotoCarousel compact photos={photos} onPreview={onPreview} /> : null}
       {photos.map((photo, index) => (
         <View key={`${photo.fileName}-${index}`} style={styles.photoRow}>
-          {photo.dataUrl ? (
-            <Pressable accessibilityRole="imagebutton" onPress={() => onPreview(photo)} style={({ pressed }) => pressed && styles.buttonPressed}>
-              <Image source={{ uri: photo.dataUrl }} style={styles.photoPreview} />
-            </Pressable>
-          ) : null}
+          <Text style={styles.photoCaptionIndex}>{index + 1}</Text>
           <TextInput
             onChangeText={(text) => onCaptionChange(kind, index, text)}
             placeholder={kind === "dish" ? "Nombre del plato" : "Nombre de la foto"}
@@ -1530,11 +1528,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
   },
-  photoPreview: {
-    backgroundColor: theme.colors.surfaceSoft,
-    borderRadius: theme.radius.md,
-    height: 54,
-    width: 54,
+  photoCaptionIndex: {
+    color: theme.colors.coral,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+    textAlign: "center",
+    width: 22,
   },
   photoCaptionInput: {
     backgroundColor: theme.colors.white,
